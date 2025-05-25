@@ -12,7 +12,6 @@ CLI tool for generating type-safe contract interfaces for Stacks blockchain appl
 - 🔄 **Multi-network support** - Different addresses for mainnet/testnet
 - 🎨 **Clean output** - Formatted, readable TypeScript code
 - 📡 **Generic Stacks hooks** - Built-in hooks for common blockchain operations
-- 🔗 **Wagmi-inspired API** - Familiar patterns for Ethereum developers
 - 🛡️ **SIP-030 compliance** - Full `@stacks/connect` v8 integration
 
 ## Installation
@@ -426,7 +425,7 @@ export default defineConfig({
 
 ### Generated Contract Hooks
 
-For each contract function, the CLI generates corresponding React hooks with a clean, wagmi-inspired API:
+For each contract function, the CLI generates corresponding React hooks with a clean, developer friendly API:
 
 ```typescript
 // Generated hooks.ts
@@ -472,7 +471,7 @@ export function useNftContractTransfer(options?: {
 
 ### Generic Stacks Hooks
 
-The CLI generates wagmi-inspired hooks for common blockchain operations:
+The CLI generates hooks for common blockchain operations:
 
 #### Connection Management
 
@@ -859,7 +858,7 @@ await openContractCall({
 
 ### With @stacks/codegen (Generated Approach)
 
-Clean, type-safe, and automatic ClarityValue conversion with wagmi-inspired API:
+Clean, type-safe, and automatic ClarityValue conversion API:
 
 #### Connection Management
 ```typescript
@@ -971,7 +970,6 @@ function NFTTransfer() {
 | ❌ No React integration | ✅ Generated React hooks |
 | ❌ Manual state management | ✅ Built-in caching & loading states |
 | ❌ Complex error handling | ✅ Automatic error boundaries |
-| ❌ Inconsistent APIs | ✅ Wagmi-inspired consistency |
 | ❌ No SIP-030 support | ✅ Full `@stacks/connect` v8 integration |
 
 ## API Usage
