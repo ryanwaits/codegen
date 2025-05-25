@@ -6,6 +6,13 @@ import { loadConfig } from "../utils/config.js";
 import { StacksApiClient } from "../utils/api.js";
 import { parseClarityFile, parseApiResponse } from "../parsers/clarity.js";
 import { generateContractInterface } from "../generators/contract.js";
+import {
+  generateContractHooks,
+  generateGenericHooks,
+} from "../generators/hooks.js";
+import { generateReactProvider } from "../generators/react-provider.js";
+import { generateStacksApiUtils } from "../generators/stacks-api-generator.js";
+import { ensureHooksDependencies } from "../utils/dependencies.js";
 import type {
   ResolvedContract,
   NetworkName,
@@ -62,6 +69,10 @@ export async function generate(options: GenerateOptions) {
     await fs.writeFile(outputPath, code);
     spinner.succeed(`Generated ${outputPath}`);
 
+    if (config.output.hooks?.enabled) {
+      await generateHooksFiles(resolvedContracts, config, spinner);
+    }
+
     console.log(
       chalk.green("\n✨ Successfully generated contract interfaces!\n")
     );
@@ -70,10 +81,106 @@ export async function generate(options: GenerateOptions) {
     console.log(
       chalk.gray(`  import { contractName } from '${config.output.path}'`)
     );
+
+    if (config.output.hooks?.enabled) {
+      console.log("\nGenerated React hooks:");
+      console.log(
+        chalk.gray(
+          `  import { StacksProvider, StacksQueryProvider } from './src/generated/provider'`
+        )
+      );
+      if (config.output.hooks.contracts) {
+        console.log(
+          chalk.gray(
+            `  import { useContractFunction } from '${config.output.hooks.contracts}'`
+          )
+        );
+      }
+      if (config.output.hooks.stacks) {
+        console.log(
+          chalk.gray(
+            `  import { useAccount, useTransaction } from '${config.output.hooks.stacks}'`
+          )
+        );
+      }
+    }
   } catch (error: any) {
     spinner.fail("Generation failed");
     console.error(chalk.red(error.message));
     process.exit(1);
+  }
+}
+
+async function generateHooksFiles(
+  resolvedContracts: ResolvedContract[],
+  config: any,
+  spinner: any
+) {
+  const hooksConfig = config.output.hooks;
+
+  // Ensure required dependencies are installed
+  await ensureHooksDependencies(process.cwd());
+
+  // Generate React provider
+  spinner.start("Generating React provider");
+  const providerCode = await generateReactProvider();
+  const providerPath = path.resolve(
+    process.cwd(),
+    "./src/generated/provider.tsx"
+  );
+
+  await fs.mkdir(path.dirname(providerPath), { recursive: true });
+  await fs.writeFile(providerPath, providerCode);
+
+  spinner.succeed(`Generated React provider: ${providerPath}`);
+
+  // Generate Stacks API utilities
+  spinner.start("Generating Stacks API utilities");
+  const stacksApiCode = await generateStacksApiUtils();
+  const stacksApiPath = path.resolve(
+    process.cwd(),
+    "./src/generated/stacks-api.ts"
+  );
+
+  await fs.mkdir(path.dirname(stacksApiPath), { recursive: true });
+  await fs.writeFile(stacksApiPath, stacksApiCode);
+
+  spinner.succeed(`Generated Stacks API utilities: ${stacksApiPath}`);
+
+  // Generate contract-specific hooks
+  if (hooksConfig.contracts) {
+    spinner.start("Generating contract hooks");
+
+    // Only generate hooks if runtime is 'full' (required for utils)
+    if (config.output.runtime !== "full") {
+      spinner.warn(
+        "Hooks require runtime: 'full' - skipping contract hooks generation"
+      );
+    } else {
+      const contractHooksCode = await generateContractHooks(resolvedContracts);
+      const contractHooksPath = path.resolve(
+        process.cwd(),
+        hooksConfig.contracts
+      );
+
+      await fs.mkdir(path.dirname(contractHooksPath), { recursive: true });
+      await fs.writeFile(contractHooksPath, contractHooksCode);
+
+      spinner.succeed(`Generated contract hooks: ${contractHooksPath}`);
+    }
+  }
+
+  // Generate generic Stacks hooks
+  if (hooksConfig.stacks) {
+    spinner.start("Generating generic Stacks hooks");
+
+    const genericHooksCode = await generateGenericHooks(hooksConfig.include);
+    const genericHooksPath = path.resolve(process.cwd(), hooksConfig.stacks);
+
+    await fs.mkdir(path.dirname(genericHooksPath), { recursive: true });
+    await fs.writeFile(genericHooksPath, genericHooksCode);
+
+    spinner.succeed(`Generated generic hooks: ${genericHooksPath}`);
   }
 }
 

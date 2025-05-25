@@ -24,7 +24,21 @@ export default defineConfig({
   
   output: {
     path: './src/generated/contracts.ts',
-    runtime: 'minimal' // or 'full' for more features
+    runtime: 'minimal', // or 'full' for more features
+    
+    // React hooks generation (requires runtime: 'full' for contract hooks)
+    hooks: {
+      enabled: true,
+      contracts: './src/generated/hooks.ts',    // Contract-specific hooks
+      stacks: './src/generated/stacks.ts',      // Generic blockchain hooks
+      include: [                                // Optional: specify which generic hooks to include
+        'useAccount',
+        'useTransaction', 
+        'useBlock',
+        'useAccountTransactions',
+        'useWaitForTransaction'
+      ]
+    }
   },
 
   network: 'mainnet', // or 'testnet', 'devnet', 'simnet'
@@ -53,4 +67,7 @@ export async function init() {
   console.log("\nNext steps:");
   console.log("  1. Edit stacks.config.ts to add your contracts");
   console.log('  2. Run "stacks generate" to generate TypeScript interfaces');
+  console.log(
+    '  3. For React hooks, set runtime: "full" and configure hooks options'
+  );
 }
