@@ -38,6 +38,7 @@ coverage/
 # Temporary files
 *.tmp
 *.temp
+docs/
 
 # Config files (users should create their own)
 stacks.config.ts
