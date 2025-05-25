@@ -27,8 +27,8 @@ If you're developing or testing the CLI locally:
 
 ```bash
 # Clone and build the project
-git clone <repo-url>
-cd stacks-cli
+git clone https://github.com/ryanwaits/codegen.git
+cd codegen
 bun install
 bun run build
 
