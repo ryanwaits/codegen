@@ -2,7 +2,7 @@
  * Configuration types for @stacks/codegen
  */
 
-export type NetworkName = "mainnet" | "testnet" | "devnet" | "simnet";
+export type NetworkName = "mainnet" | "testnet" | "devnet";
 
 export interface ContractSource {
   /**

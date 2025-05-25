@@ -9,7 +9,6 @@ const API_URLS: Record<NetworkName, string> = {
   mainnet: "https://api.hiro.so",
   testnet: "https://api.testnet.hiro.so",
   devnet: "http://localhost:3999",
-  simnet: "http://localhost:3999",
 };
 
 export interface ContractInfo {
