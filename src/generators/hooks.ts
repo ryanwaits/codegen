@@ -1,6 +1,17 @@
 import { format } from "prettier";
 import type { ResolvedContract } from "../types/config.js";
 import type { ClarityFunction } from "clarity-abitype";
+import { useState, useCallback } from "react";
+import {
+  connect,
+  disconnect,
+  isConnected,
+  request,
+  openContractCall as stacksOpenContractCall,
+  openSTXTransfer,
+  openSignatureRequestPopup,
+  openContractDeploy,
+} from "@stacks/connect";
 
 /**
  * React hooks generator for contract interfaces and generic Stacks functionality
@@ -12,6 +23,9 @@ const GENERIC_HOOKS = [
   "useDisconnect",
   "useNetwork",
   "useContract",
+  "useOpenSTXTransfer",
+  "useSignMessage",
+  "useDeployContract",
   "useReadContract",
   "useTransaction",
   "useBlock",
@@ -23,6 +37,7 @@ export async function generateContractHooks(
   contracts: ResolvedContract[]
 ): Promise<string> {
   const imports = `import { useQuery, useMutation } from '@tanstack/react-query'
+import { useCallback } from 'react'
 import { useStacksConfig } from './provider'
 import { useContract } from './stacks'
 import { ${contracts.map((c) => c.name).join(", ")} } from './contracts'`;
@@ -55,8 +70,9 @@ export async function generateGenericHooks(
   const hooksToGenerate = includeHooks || [...GENERIC_HOOKS];
 
   const imports = `import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useState, useCallback } from 'react'
 import { useStacksConfig } from './provider'
-import { connect, disconnect, isConnected, request, openContractCall } from '@stacks/connect'
+import { connect, disconnect, isConnected, request, openContractCall as stacksOpenContractCall, openSTXTransfer, openSignatureRequestPopup, openContractDeploy } from '@stacks/connect'
 import { 
   fetchAccountInfo, 
   fetchTransaction, 
@@ -139,22 +155,26 @@ function generateWriteHook(
   const hookName = `use${capitalize(contractName)}${capitalize(toCamelCase(func.name))}`;
   const argsType = generateArgsType(func.args);
 
-  return `export function ${hookName}(options?: {
-  onSuccess?: (data: any) => void;
-  onError?: (error: Error) => void;
-}) {
-  const contract = useContract<any, any>(options)
+  return `export function ${hookName}() {
+  const { openContractCall, isRequestPending } = useContract()
   
+  const ${toCamelCase(func.name)} = useCallback(async (args: ${argsType}, options?: {
+    postConditions?: any[];
+    attachment?: string;
+    onFinish?: (data: any) => void;
+    onCancel?: () => void;
+  }) => {
+    const contractCallData = ${contractName}.${toCamelCase(func.name)}(args)
+    
+    return await openContractCall({
+      ...contractCallData,
+      ...options
+    })
+  }, [openContractCall])
+
   return {
-    ...contract,
-    broadcast: (args: ${argsType}) => {
-      const contractCallData = ${contractName}.${toCamelCase(func.name)}(args)
-      contract.broadcast(contractCallData)
-    },
-    broadcastAsync: async (args: ${argsType}) => {
-      const contractCallData = ${contractName}.${toCamelCase(func.name)}(args)
-      return contract.broadcastAsync(contractCallData)
-    }
+    ${toCamelCase(func.name)},
+    isRequestPending
   }
 }`;
 }
@@ -336,78 +356,85 @@ function generateGenericHook(hookName: string): string {
 }`;
 
     case "useContract":
-      return `export function useContract<TArgs = any, TResult = any>(options?: {
-  onSuccess?: (data: TResult) => void;
-  onError?: (error: Error) => void;
-}) {
+      return `export function useContract() {
   const config = useStacksConfig()
   const queryClient = useQueryClient()
+  const [isRequestPending, setIsRequestPending] = useState(false)
   
-  const mutation = useMutation<TResult, Error, { contractAddress: string; contractName: string; functionName: string; functionArgs: any[]; network?: string }>({
-    mutationFn: async (contractCall) => {
+  const openContractCall = useCallback(async (params: {
+    contractAddress: string;
+    contractName: string;
+    functionName: string;
+    functionArgs: any[];
+    network?: string;
+    postConditions?: any[];
+    attachment?: string;
+    onFinish?: (data: any) => void;
+    onCancel?: () => void;
+  }) => {
+    setIsRequestPending(true)
+    
+    try {
+      const { contractAddress, contractName, functionName, functionArgs, onFinish, onCancel, ...options } = params
+      const network = params.network || config.network || 'mainnet'
+      const contract = \`\${contractAddress}.\${contractName}\`
+      
+      // Try @stacks/connect v8 stx_callContract first (SIP-030)
       try {
-        const { contractAddress, contractName, functionName, functionArgs } = contractCall
-        const network = contractCall.network || config.network || 'mainnet'
-        const contract = \`\${contractAddress}.\${contractName}\`
+        const result = await request('stx_callContract', {
+          contract,
+          functionName,
+          functionArgs,
+          network,
+          ...options
+        })
         
-        // Try @stacks/connect v8 stx_callContract first (SIP-030)
-        try {
-          const result = await request('stx_callContract', {
-            contract,
+        // Invalidate relevant queries on success
+        queryClient.invalidateQueries({ 
+          queryKey: ['stacks-account'] 
+        })
+        
+        onFinish?.(result)
+        return result
+      } catch (connectError) {
+        // Fallback to openContractCall for broader wallet compatibility
+        console.warn('stx_callContract not supported, falling back to openContractCall:', connectError)
+        
+        return new Promise((resolve, reject) => {
+          stacksOpenContractCall({
+            contractAddress,
+            contractName,
             functionName,
             functionArgs,
-            network
+            network,
+            ...options,
+            onFinish: (data: any) => {
+              // Invalidate relevant queries on success
+              queryClient.invalidateQueries({ 
+                queryKey: ['stacks-account'] 
+              })
+              
+              onFinish?.(data)
+              resolve(data)
+            },
+            onCancel: () => {
+              onCancel?.()
+              reject(new Error('User cancelled transaction'))
+            }
           })
-          
-          return result as TResult
-        } catch (connectError) {
-          // Fallback to openContractCall for broader wallet compatibility
-          console.warn('stx_callContract not supported, falling back to openContractCall:', connectError)
-          
-          return new Promise<TResult>((resolve, reject) => {
-            openContractCall({
-              contractAddress,
-              contractName,
-              functionName,
-              functionArgs,
-              network,
-              onFinish: (data: any) => {
-                resolve(data as TResult)
-              },
-              onCancel: () => {
-                reject(new Error('User cancelled transaction'))
-              }
-            })
-          })
-        }
-      } catch (error) {
-        throw error instanceof Error ? error : new Error('Contract call failed')
+        })
       }
-    },
-    onSuccess: (data) => {
-      // Invalidate relevant queries
-      queryClient.invalidateQueries({ 
-        queryKey: ['stacks-account'] 
-      })
-      
-      // Call user-provided success handler
-      options?.onSuccess?.(data)
-    },
-    onError: (error) => {
+    } catch (error) {
       console.error('Contract call failed:', error)
-      options?.onError?.(error)
+      throw error instanceof Error ? error : new Error('Contract call failed')
+    } finally {
+      setIsRequestPending(false)
     }
-  })
-  
+  }, [config.network, queryClient])
+
   return {
-    broadcast: mutation.mutate,
-    broadcastAsync: mutation.mutateAsync,
-    isPending: mutation.isPending,
-    isError: mutation.isError,
-    isSuccess: mutation.isSuccess,
-    error: mutation.error,
-    data: mutation.data,
-    reset: mutation.reset
+    openContractCall,
+    isRequestPending
   }
 }`;
 
@@ -531,6 +558,163 @@ function generateGenericHook(hookName: string): string {
       })
     }
   })
+}`;
+
+    case "useOpenSTXTransfer":
+      return `export function useOpenSTXTransfer() {
+  const config = useStacksConfig()
+  const queryClient = useQueryClient()
+  const [isRequestPending, setIsRequestPending] = useState(false)
+  
+  const openSTXTransfer = useCallback(async (params: {
+    recipient: string;
+    amount: string | number;
+    memo?: string;
+    network?: string;
+    onFinish?: (data: any) => void;
+    onCancel?: () => void;
+  }) => {
+    setIsRequestPending(true)
+    
+    try {
+      const { recipient, amount, memo, onFinish, onCancel, ...options } = params
+      const network = params.network || config.network || 'mainnet'
+      
+      return new Promise((resolve, reject) => {
+        openSTXTransfer({
+          recipient,
+          amount: amount.toString(),
+          memo,
+          network,
+          ...options,
+          onFinish: (data: any) => {
+            // Invalidate relevant queries on success
+            queryClient.invalidateQueries({ 
+              queryKey: ['stacks-account'] 
+            })
+            
+            onFinish?.(data)
+            resolve(data)
+          },
+          onCancel: () => {
+            onCancel?.()
+            reject(new Error('User cancelled transaction'))
+          }
+        })
+      })
+    } catch (error) {
+      console.error('STX transfer failed:', error)
+      throw error instanceof Error ? error : new Error('STX transfer failed')
+    } finally {
+      setIsRequestPending(false)
+    }
+  }, [config.network, queryClient])
+
+  return {
+    openSTXTransfer,
+    isRequestPending
+  }
+}`;
+
+    case "useSignMessage":
+      return `export function useSignMessage() {
+  const config = useStacksConfig()
+  const [isRequestPending, setIsRequestPending] = useState(false)
+  
+  const signMessage = useCallback(async (params: {
+    message: string;
+    network?: string;
+    onFinish?: (data: any) => void;
+    onCancel?: () => void;
+  }) => {
+    setIsRequestPending(true)
+    
+    try {
+      const { message, onFinish, onCancel, ...options } = params
+      const network = params.network || config.network || 'mainnet'
+      
+      return new Promise((resolve, reject) => {
+        openSignatureRequestPopup({
+          message,
+          network,
+          ...options,
+          onFinish: (data: any) => {
+            onFinish?.(data)
+            resolve(data)
+          },
+          onCancel: () => {
+            onCancel?.()
+            reject(new Error('User cancelled message signing'))
+          }
+        })
+      })
+    } catch (error) {
+      console.error('Message signing failed:', error)
+      throw error instanceof Error ? error : new Error('Message signing failed')
+    } finally {
+      setIsRequestPending(false)
+    }
+  }, [config.network])
+
+  return {
+    signMessage,
+    isRequestPending
+  }
+}`;
+
+    case "useDeployContract":
+      return `export function useDeployContract() {
+  const config = useStacksConfig()
+  const queryClient = useQueryClient()
+  const [isRequestPending, setIsRequestPending] = useState(false)
+  
+  const deployContract = useCallback(async (params: {
+    contractName: string;
+    codeBody: string;
+    network?: string;
+    postConditions?: any[];
+    onFinish?: (data: any) => void;
+    onCancel?: () => void;
+  }) => {
+    setIsRequestPending(true)
+    
+    try {
+      const { contractName, codeBody, onFinish, onCancel, ...options } = params
+      const network = params.network || config.network || 'mainnet'
+      
+      return new Promise((resolve, reject) => {
+        openContractDeploy({
+          contractName,
+          codeBody,
+          network,
+          ...options,
+          onFinish: (data: any) => {
+            // Invalidate relevant queries on success
+            queryClient.invalidateQueries({ 
+              queryKey: ['stacks-account'] 
+            })
+            
+            onFinish?.(data)
+            resolve(data)
+          },
+          onCancel: () => {
+            onCancel?.()
+            reject(new Error('User cancelled contract deployment'))
+          }
+        })
+      })
+    } catch (error) {
+      console.error('Contract deployment failed:', error)
+      throw error instanceof Error ? error : new Error('Contract deployment failed')
+    } finally {
+      setIsRequestPending(false)
+    }
+  }, [config.network, queryClient])
+
+  return {
+    deployContract,
+    isRequestPending
+  }
 }`;
 
     default:
