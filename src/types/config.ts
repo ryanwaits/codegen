@@ -21,6 +21,28 @@ export interface ContractSource {
   name?: string;
 }
 
+export interface HooksConfig {
+  /**
+   * Whether to generate React hooks
+   */
+  enabled: boolean;
+
+  /**
+   * Path for contract-specific hooks
+   */
+  contracts?: string;
+
+  /**
+   * Path for generic Stacks hooks
+   */
+  stacks?: string;
+
+  /**
+   * Which generic hooks to include (if not specified, includes all)
+   */
+  include?: string[];
+}
+
 export interface OutputConfig {
   /**
    * Output file path
@@ -31,6 +53,11 @@ export interface OutputConfig {
    * Whether to generate additional runtime helpers
    */
   runtime?: "minimal" | "full";
+
+  /**
+   * React hooks configuration
+   */
+  hooks?: HooksConfig;
 }
 
 export interface StacksConfig {
