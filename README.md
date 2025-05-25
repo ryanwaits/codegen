@@ -155,7 +155,8 @@ await openContractCall({
       address: {
         mainnet: 'SP2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9.dao',
         testnet: 'ST2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9.dao-test'
-      }
+      },
+      name: 'daoContract'
     },
     
     // Local Clarity file
@@ -167,13 +168,188 @@ await openContractCall({
 }
 ```
 
+**Multi-network contracts generate separate exports:**
+
+```typescript
+// Configuration with network filter
+export default defineConfig({
+  contracts: [
+    {
+      address: {
+        mainnet: 'SP2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9.dao',
+        testnet: 'ST2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9.dao-test'
+      },
+      name: 'daoContract'
+    }
+  ],
+  network: 'mainnet' // Only generate mainnet version
+})
+
+// Generated output (mainnet only)
+export const daoContract = {
+  address: 'SP2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9',
+  contractName: 'dao',
+  // ... mainnet methods
+}
+
+// Configuration without network filter
+export default defineConfig({
+  contracts: [/* same as above */],
+  // network not specified - generates all networks
+})
+
+// Generated output (all networks)
+export const daoContract = {
+  address: 'SP2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9',
+  contractName: 'dao',
+  // ... mainnet methods
+}
+
+export const testnetDaoContract = {
+  address: 'ST2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9', 
+  contractName: 'dao-test',
+  // ... testnet methods (same API, different addresses)
+}
+
+// Usage - explicit network selection
+import { daoContract, testnetDaoContract } from './contracts'
+
+// Use mainnet
+await openContractCall({
+  ...daoContract.vote({ proposalId: 1n, support: true })
+})
+
+// Use testnet  
+await openContractCall({
+  ...testnetDaoContract.vote({ proposalId: 1n, support: true })
+})
+```
+
 ### Options
 
 - `output.path` - Where to generate the TypeScript file
 - `output.runtime` - `'minimal'` (default) or `'full'`
-- `network` - `'mainnet'` (default), `'testnet'`, `'devnet'`, or `'simnet'`
+- `network` - `'testnet'` (default), `'mainnet'`, `'devnet'`, or `'simnet'`
 - `apiKey` - Optional API key for higher rate limits
 - `apiUrl` - Optional custom API URL
+
+**Network Behavior:**
+- **Multi-network contracts**: If `network` is specified, only that network is generated. If omitted, all defined networks are generated.
+- **Single-network contracts**: Uses `network` for API selection, defaults to `testnet`.
+
+## Runtime Configurations
+
+The CLI supports two runtime modes that determine what gets generated:
+
+### Minimal Runtime (Default)
+
+The minimal runtime generates clean, self-contained contract methods with no additional dependencies:
+
+```typescript
+export const nftContract = {
+  address: 'SP2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9',
+  contractAddress: 'SP2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9',
+  contractName: 'nft-nyc',
+  
+  transfer(id: bigint, sender: string, recipient: string) {
+    return {
+      contractAddress: 'SP2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9',
+      contractName: 'nft-nyc',
+      functionName: 'transfer',
+      functionArgs: [Cl.uint(id), Cl.standardPrincipal(sender), Cl.standardPrincipal(recipient)]
+    }
+  }
+} as const
+```
+
+**Benefits:**
+- ✅ Zero runtime overhead
+- ✅ Perfect tree-shaking
+- ✅ No additional dependencies
+- ✅ Smallest possible bundle size
+- ✅ Works with any framework
+
+### Full Runtime (Planned)
+
+The full runtime will include additional helper functions and utilities:
+
+```typescript
+export const nftContract = {
+  // Basic methods (same as minimal)
+  transfer(id: bigint, sender: string, recipient: string) { /* ... */ },
+  
+  // Additional utilities
+  utils: {
+    // Simplified contract calling
+    async callTransfer(args: TransferArgs, options?: CallOptions) {
+      return await openContractCall({
+        ...nftContract.transfer(args),
+        ...options
+      })
+    },
+    
+    // Read-only function helpers
+    async readOwner(id: bigint, network: NetworkName = 'mainnet') {
+      return await callReadOnlyFunction({
+        ...nftContract.getOwner(id),
+        network,
+        senderAddress: 'SP000000000000000000002Q6VF78'
+      })
+    }
+  },
+  
+  // React hooks (if React is detected)
+  hooks: {
+    useTransfer() {
+      return useMutation({
+        mutationFn: (args: TransferArgs) => 
+          nftContract.utils.callTransfer(args)
+      })
+    },
+    
+    useOwner(id: bigint) {
+      return useQuery({
+        queryKey: ['nft-owner', id],
+        queryFn: () => nftContract.utils.readOwner(id)
+      })
+    }
+  },
+  
+  // Event listeners
+  events: {
+    onTransfer(callback: (event: TransferEvent) => void) {
+      // Set up event listening
+    }
+  }
+} as const
+```
+
+**Planned Features for Full Runtime:**
+- 🔄 Built-in transaction helpers
+- ⚛️ React hooks generation (when React is detected)
+- 📡 Event listening utilities
+- 🔁 Automatic retry logic
+- 📊 Transaction status tracking
+- 🛡️ Enhanced error handling
+- 🎯 Response type parsing
+
+### Configuration
+
+```typescript
+export default defineConfig({
+  contracts: [/* ... */],
+  output: {
+    path: './src/contracts.ts',
+    runtime: 'minimal' // or 'full'
+  }
+})
+```
+
+**When to use each:**
+- **Minimal**: Production apps, libraries, when bundle size matters
+- **Full**: Rapid prototyping, internal tools, when developer experience is prioritized
+
+> **Note**: Full runtime is currently in development. The minimal runtime is production-ready and recommended for most use cases.
 
 ## Generated Code
 
