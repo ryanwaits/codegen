@@ -1,4 +1,4 @@
-# @stacks/cli
+# @stacks/codegen
 
 CLI tool for generating type-safe contract interfaces for Stacks blockchain applications.
 
@@ -14,11 +14,11 @@ CLI tool for generating type-safe contract interfaces for Stacks blockchain appl
 ## Installation
 
 ```bash
-npm install -D @stacks/cli
+npm install -D @stacks/codegen
 # or
-yarn add -D @stacks/cli
+yarn add -D @stacks/codegen
 # or
-bun add -D @stacks/cli
+bun add -D @stacks/codegen
 ```
 
 ## Local Development & Testing
@@ -46,9 +46,9 @@ stacks generate
 
 To unlink when done:
 ```bash
-npm unlink -g @stacks/cli
+npm unlink -g @stacks/codegen
 # or
-bun unlink @stacks/cli
+bun unlink @stacks/codegen
 ```
 
 ### Testing with a Local Project
@@ -61,7 +61,7 @@ npm init -y
 
 2. **Link the CLI**:
 ```bash
-npm link @stacks/cli
+npm link @stacks/codegen
 ```
 
 3. **Initialize and test**:
@@ -76,7 +76,7 @@ npx stacks generate
 Create a `stacks.config.ts` with a real deployed contract:
 
 ```typescript
-import { defineConfig } from '@stacks/cli'
+import { defineConfig } from '@stacks/codegen'
 
 export default defineConfig({
   contracts: [
@@ -102,7 +102,7 @@ npx stacks init
 
 2. **Edit `stacks.config.ts`**
 ```typescript
-import { defineConfig } from '@stacks/cli'
+import { defineConfig } from '@stacks/codegen'
 
 export default defineConfig({
   contracts: [
@@ -219,7 +219,7 @@ export const nftContract = {
 
 ## Before vs After: See the Difference
 
-### Without @stacks/cli (Manual Approach)
+### Without @stacks/codegen (Manual Approach)
 
 Using raw [@stacks/transactions](https://stacks.js.org/modules/_stacks_transactions) and [@stacks/connect](https://www.npmjs.com/package/@stacks/connect) requires manual ClarityValue conversion and is error-prone:
 
@@ -287,7 +287,7 @@ const transaction = await makeContractCall({
 })
 ```
 
-### With @stacks/cli (Generated Approach)
+### With @stacks/codegen (Generated Approach)
 
 Clean, type-safe, and automatic ClarityValue conversion:
 
@@ -352,7 +352,7 @@ const transaction = await makeContractCall({
 
 ### Key Benefits
 
-| Manual Approach | @stacks/cli Generated |
+| Manual Approach | @stacks/codegen Generated |
 |-----------------|----------------------|
 | ❌ Manual ClarityValue conversion | ✅ Automatic conversion |
 | ❌ No type safety | ✅ Full TypeScript support |
@@ -367,7 +367,7 @@ const transaction = await makeContractCall({
 You can also use the CLI programmatically:
 
 ```typescript
-import { defineConfig, generate } from '@stacks/cli'
+import { defineConfig, generate } from '@stacks/codegen'
 
 const config = defineConfig({
   contracts: [

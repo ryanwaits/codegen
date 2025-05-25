@@ -1,5 +1,5 @@
 /**
- * Configuration types for @stacks/cli
+ * Configuration types for @stacks/codegen
  */
 
 export type NetworkName = "mainnet" | "testnet" | "devnet" | "simnet";

@@ -6,7 +6,7 @@ import chalk from "chalk";
  * Init command - creates a default config file
  */
 
-const DEFAULT_CONFIG = `import { defineConfig } from '@stacks/cli'
+const DEFAULT_CONFIG = `import { defineConfig } from '@stacks/codegen'
 
 export default defineConfig({
   contracts: [

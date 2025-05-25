@@ -1,5 +1,5 @@
 /**
- * @stacks/cli
+ * @stacks/codegen
  * CLI tool for generating type-safe Stacks contract interfaces
  */
 

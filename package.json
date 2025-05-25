@@ -1,5 +1,5 @@
 {
-  "name": "@stacks/cli",
+  "name": "@stacks/codegen",
   "version": "0.1.0",
   "description": "CLI tool for generating type-safe Stacks contract interfaces",
   "type": "module",

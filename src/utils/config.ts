@@ -46,15 +46,15 @@ export async function loadConfig(configPath?: string): Promise<StacksConfig> {
   if (resolvedPath.endsWith(".ts")) {
     const code = await fs.readFile(resolvedPath, "utf-8");
 
-    // Transform TypeScript to JavaScript, replacing the @stacks/cli import
+    // Transform TypeScript to JavaScript, replacing the @stacks/codegen import
     // For development/linked packages, we need to resolve to the actual package location
     // This will work both for published packages and local development
     let replacementPath: string;
 
     try {
-      // Try to resolve @stacks/cli as if it were a normal package
+      // Try to resolve @stacks/codegen as if it were a normal package
       const require = createRequire(import.meta.url);
-      const packagePath = require.resolve("@stacks/cli");
+      const packagePath = require.resolve("@stacks/codegen");
       replacementPath = pathToFileURL(packagePath).href;
     } catch {
       // Fallback: resolve relative to current module (for development)
