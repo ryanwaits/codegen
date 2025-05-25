@@ -12,6 +12,8 @@ CLI tool for generating type-safe contract interfaces for Stacks blockchain appl
 - 🔄 **Multi-network support** - Different addresses for mainnet/testnet
 - 🎨 **Clean output** - Formatted, readable TypeScript code
 - 📡 **Generic Stacks hooks** - Built-in hooks for common blockchain operations
+- 🔗 **Wagmi-inspired API** - Familiar patterns for Ethereum developers
+- 🛡️ **SIP-030 compliance** - Full `@stacks/connect` v8 integration
 
 ## Installation
 
@@ -122,6 +124,11 @@ export default defineConfig({
       stacks: './src/generated/stacks.ts',      // Generic blockchain hooks
       include: [                                // Optional: specify which generic hooks to include
         'useAccount',
+        'useConnect',
+        'useDisconnect',
+        'useNetwork',
+        'useContract',
+        'useReadContract',
         'useTransaction',
         'useBlock'
       ]
@@ -404,6 +411,11 @@ export default defineConfig({
       stacks: './src/generated/stacks.ts',      // Generic blockchain hooks
       include: [                                // Optional: specify which generic hooks to include
         'useAccount',
+        'useConnect',
+        'useDisconnect',
+        'useNetwork',
+        'useContract',
+        'useReadContract',
         'useTransaction',
         'useBlock'
       ]
@@ -414,11 +426,12 @@ export default defineConfig({
 
 ### Generated Contract Hooks
 
-For each contract function, the CLI generates corresponding React hooks:
+For each contract function, the CLI generates corresponding React hooks with a clean, wagmi-inspired API:
 
 ```typescript
 // Generated hooks.ts
 import { useQuery, useMutation } from '@tanstack/react-query'
+import { useContract, useReadContract } from './stacks'
 import { nftContract } from './contracts'
 
 // Read-only function hooks
@@ -436,101 +449,197 @@ export function useNftContractGetOwner(id: bigint, options?: { enabled?: boolean
   })
 }
 
-// Public function hooks
-export function useNftContractTransfer() {
-  return useMutation({
-    mutationFn: (args: { id: bigint; sender: string; recipient: string }) =>
-      new Promise((resolve, reject) => {
-        openContractCall({
-          ...nftContract.transfer(args),
-          onFinish: resolve,
-          onCancel: () => reject(new Error('User cancelled transaction'))
-        })
-      })
-  })
+// Public function hooks with broadcast API
+export function useNftContractTransfer(options?: {
+  onSuccess?: (data: any) => void;
+  onError?: (error: Error) => void;
+}) {
+  const contract = useContract<any, any>(options)
+  
+  return {
+    ...contract,
+    broadcast: (args: { id: bigint; sender: string; recipient: string }) => {
+      const contractCallData = nftContract.transfer(args)
+      contract.broadcast(contractCallData)
+    },
+    broadcastAsync: async (args: { id: bigint; sender: string; recipient: string }) => {
+      const contractCallData = nftContract.transfer(args)
+      return contract.broadcastAsync(contractCallData)
+    }
+  }
 }
 ```
 
 ### Generic Stacks Hooks
 
-The CLI also generates hooks for common blockchain operations:
+The CLI generates wagmi-inspired hooks for common blockchain operations:
+
+#### Connection Management
 
 ```typescript
 // Generated stacks.ts
-export function useAccount(address?: string) {
-  const config = useStacksConfig()
-  
+
+// Account management - no parameters needed, returns connection state
+export function useAccount() {
   return useQuery({
-    queryKey: ['account', address, config.network],
-    queryFn: () => fetchAccountInfo({
-      address: address!,
-      network: config.network
-    }),
-    enabled: !!address
+    queryKey: ['stacks-account', config.network],
+    queryFn: async () => {
+      const connected = isConnected()
+      if (!connected) return { address: undefined, isConnected: false, status: 'disconnected' }
+      
+      const result = await request('stx_getAddresses') // SIP-030 compliant
+      const stxAddresses = result.addresses
+        .filter(addr => addr.address.startsWith('SP') || addr.address.startsWith('ST'))
+        .map(addr => addr.address)
+
+      return {
+        address: stxAddresses[0],
+        addresses: stxAddresses,
+        isConnected: true,
+        status: 'connected'
+      }
+    }
   })
 }
 
+// Connection with optional wallet selection
+export function useConnect() {
+  return useMutation({
+    mutationFn: async (options: { forceWalletSelect?: boolean } = {}) => {
+      return await connect(options) // @stacks/connect v8
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['stacks-account'] })
+    }
+  })
+}
+
+// Clean disconnection
+export function useDisconnect() {
+  return useMutation({
+    mutationFn: async () => await disconnect(),
+    onSuccess: () => queryClient.clear()
+  })
+}
+
+// Network information
+export function useNetwork() {
+  return useQuery({
+    queryKey: ['stacks-network', config.network],
+    queryFn: async () => ({
+      network: config.network,
+      isMainnet: config.network === 'mainnet',
+      isTestnet: config.network === 'testnet',
+      isDevnet: config.network === 'devnet'
+    })
+  })
+}
+```
+
+#### Contract Interaction
+
+```typescript
+// Generic contract interaction hook
+export function useContract<TArgs = any, TResult = any>(options?: {
+  onSuccess?: (data: TResult) => void;
+  onError?: (error: Error) => void;
+}) {
+  return useMutation({
+    mutationFn: async (contractCall: {
+      contractAddress: string;
+      contractName: string;
+      functionName: string;
+      functionArgs: any[];
+    }) => {
+      // Try SIP-030 stx_callContract first, fallback to openContractCall
+      try {
+        return await request('stx_callContract', {
+          contract: `${contractCall.contractAddress}.${contractCall.contractName}`,
+          functionName: contractCall.functionName,
+          functionArgs: contractCall.functionArgs
+        })
+      } catch {
+        return new Promise((resolve, reject) => {
+          openContractCall({
+            ...contractCall,
+            onFinish: resolve,
+            onCancel: () => reject(new Error('User cancelled'))
+          })
+        })
+      }
+    }
+  })
+}
+
+// Generic read contract hook
+export function useReadContract<TArgs = any, TResult = any>(params: {
+  contractAddress: string;
+  contractName: string;
+  functionName: string;
+  args?: TArgs;
+  network?: 'mainnet' | 'testnet' | 'devnet';
+  enabled?: boolean;
+}) {
+  return useQuery({
+    queryKey: ['read-contract', params.contractAddress, params.contractName, params.functionName, params.args],
+    queryFn: async () => {
+      const { fetchCallReadOnlyFunction } = await import('@stacks/transactions')
+      
+      return await fetchCallReadOnlyFunction({
+        contractAddress: params.contractAddress,
+        contractName: params.contractName,
+        functionName: params.functionName,
+        functionArgs: convertArgsToArray(params.args), // Automatic conversion
+        network: params.network || config.network
+      })
+    },
+    enabled: params.enabled ?? true
+  })
+}
+```
+
+#### Blockchain Data
+
+```typescript
+// Transaction monitoring
 export function useTransaction(txId?: string) {
-  const config = useStacksConfig()
-  
   return useQuery({
     queryKey: ['transaction', txId, config.network],
-    queryFn: () => fetchTransaction({
-      txId: txId!,
-      network: config.network
-    }),
+    queryFn: () => fetchTransaction({ txId: txId!, network: config.network }),
     enabled: !!txId
   })
 }
 
+// Block information
 export function useBlock(height?: number) {
-  const config = useStacksConfig()
-  
   return useQuery({
     queryKey: ['block', height, config.network],
-    queryFn: () => fetchBlock({
-      height: height!,
-      network: config.network
-    }),
+    queryFn: () => fetchBlock({ height: height!, network: config.network }),
     enabled: typeof height === 'number'
   })
 }
 
+// Account transaction history
 export function useAccountTransactions(address?: string) {
-  const config = useStacksConfig()
-  
   return useQuery({
     queryKey: ['account-transactions', address, config.network],
-    queryFn: () => fetchAccountTransactions({
-      address: address!,
-      network: config.network
-    }),
+    queryFn: () => fetchAccountTransactions({ address: address!, network: config.network }),
     enabled: !!address
   })
 }
 ```
 
 **Available Generic Hooks:**
-- `useAccount` - Fetch account information and balances
-- `useTransaction` - Get transaction details and status
-- `useBlock` - Retrieve block information by height
-- `useAccountTransactions` - Get transaction history for an account
-- `useWaitForTransaction` - Wait for transaction confirmation (coming soon)
-
-You can specify which hooks to include in your configuration:
-
-```typescript
-export default defineConfig({
-  // ...
-  output: {
-    hooks: {
-      enabled: true,
-      stacks: './src/generated/stacks.ts',
-      include: ['useAccount', 'useTransaction'] // Only generate these hooks
-    }
-  }
-})
-```
+- `useAccount` - Connection state and address management
+- `useConnect` - Wallet connection with SIP-030 support
+- `useDisconnect` - Clean wallet disconnection
+- `useNetwork` - Network information and utilities
+- `useContract` - Generic contract interaction with broadcast API
+- `useReadContract` - Generic read-only contract calls
+- `useTransaction` - Transaction details and status
+- `useBlock` - Block information by height
+- `useAccountTransactions` - Transaction history for accounts
+- `useWaitForTransaction` - Transaction confirmation monitoring
 
 ### React Provider Setup
 
@@ -556,34 +665,121 @@ function App() {
 
 ### Usage in Components
 
+#### Basic Contract Interaction
+
 ```typescript
-import { useNftContractGetOwner, useNftContractTransfer } from './generated/hooks'
-import { useAccount } from './generated/stacks'
+import { 
+  useNftContractGetOwner, 
+  useNftContractTransfer,
+  useAccount,
+  useConnect,
+  useDisconnect 
+} from './generated/hooks'
 
 function NFTComponent({ tokenId }: { tokenId: bigint }) {
-  // Get token owner
+  // Connection management
+  const { address, isConnected } = useAccount()
+  const connect = useConnect()
+  const disconnect = useDisconnect()
+  
+  // Contract interactions
   const { data: owner, isLoading } = useNftContractGetOwner(tokenId)
-  
-  // Transfer mutation
-  const transferMutation = useNftContractTransfer()
-  
-  // Get current user account
-  const { data: account } = useAccount('SP...')
+  const transfer = useNftContractTransfer({
+    onSuccess: (data) => console.log('Transfer successful:', data),
+    onError: (error) => console.error('Transfer failed:', error)
+  })
+
+  const handleConnect = () => {
+    connect.mutate({ forceWalletSelect: true })
+  }
 
   const handleTransfer = () => {
-    transferMutation.mutate({
+    if (!address) return
+    
+    transfer.broadcast({
       id: tokenId,
-      sender: 'SP...',
-      recipient: 'SP...'
+      sender: address,
+      recipient: 'SP3FGQ8Z7JY9BWYZ5WM53E0M9NK7WHJF0691NZ159'
     })
   }
 
-  if (isLoading) return <div>Loading...</div>
+  if (!isConnected) {
+    return (
+      <button onClick={handleConnect} disabled={connect.isPending}>
+        {connect.isPending ? 'Connecting...' : 'Connect Wallet'}
+      </button>
+    )
+  }
+
+  if (isLoading) return <div>Loading NFT data...</div>
 
   return (
     <div>
-      <p>Owner: {owner}</p>
-      <button onClick={handleTransfer}>Transfer NFT</button>
+      <p>Connected: {address}</p>
+      <p>NFT Owner: {owner}</p>
+      <button 
+        onClick={handleTransfer}
+        disabled={transfer.isPending}
+      >
+        {transfer.isPending ? 'Transferring...' : 'Transfer NFT'}
+      </button>
+      <button onClick={() => disconnect.mutate()}>
+        Disconnect
+      </button>
+    </div>
+  )
+}
+```
+
+#### Generic Hook Usage
+
+```typescript
+import { useContract, useReadContract, useTransaction } from './generated/stacks'
+import { myContract } from './generated/contracts'
+
+function GenericContractExample() {
+  // Generic contract interaction
+  const contract = useContract({
+    onSuccess: (data) => console.log('Success:', data)
+  })
+  
+  // Generic read contract
+  const { data: balance } = useReadContract({
+    contractAddress: 'SP2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9',
+    contractName: 'token-contract',
+    functionName: 'get-balance',
+    args: { owner: 'SP...' }
+  })
+  
+  // Transaction monitoring
+  const { data: txData } = useTransaction('0x1234...')
+
+  const handleGenericCall = () => {
+    // Use with generated contract interface
+    const contractCall = myContract.someFunction({ param: 'value' })
+    contract.broadcast(contractCall)
+  }
+
+  const handleDirectCall = () => {
+    // Or use directly
+    contract.broadcast({
+      contractAddress: 'SP2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9',
+      contractName: 'my-contract',
+      functionName: 'some-function',
+      functionArgs: ['value']
+    })
+  }
+
+  return (
+    <div>
+      <p>Balance: {balance}</p>
+      <p>Transaction Status: {txData?.tx_status}</p>
+      <button onClick={handleGenericCall}>
+        Call with Contract Interface
+      </button>
+      <button onClick={handleDirectCall}>
+        Direct Contract Call
+      </button>
     </div>
   )
 }
@@ -599,53 +795,31 @@ When hooks are enabled, the CLI automatically installs required dependencies:
 - `@stacks/connect`
 - `@types/react` (dev dependency)
 
-## Generated Code
-
-The CLI generates clean, type-safe contract interfaces:
-
-```typescript
-export const nftContract = {
-  address: 'SP2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9',
-  contractAddress: 'SP2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9',
-  contractName: 'nft-nyc',
-  
-  // Public functions return ContractCallParams
-  transfer(id: bigint, sender: string, recipient: string) {
-    return {
-      contractAddress: this.address,
-      contractName: this.contractName,
-      functionName: 'transfer',
-      functionArgs: [id, sender, recipient]
-    }
-  },
-  
-  // Also supports object syntax
-  transfer(args: { id: bigint; sender: string; recipient: string }) {
-    return {
-      contractAddress: this.address,
-      contractName: this.contractName,
-      functionName: 'transfer',
-      functionArgs: [args.id, args.sender, args.recipient]
-    }
-  },
-  
-  // Read-only functions  
-  getOwner(id: bigint) {
-    return {
-      contractAddress: this.address,
-      contractName: this.contractName,
-      functionName: 'get-owner',
-      functionArgs: [id]
-    }
-  }
-} as const
-```
-
 ## Before vs After: See the Difference
 
 ### Without @stacks/codegen (Manual Approach)
 
 Using raw [@stacks/transactions](https://stacks.js.org/modules/_stacks_transactions) and [@stacks/connect](https://www.npmjs.com/package/@stacks/connect) requires manual ClarityValue conversion and is error-prone:
+
+#### Connection Management
+```typescript
+import { connect, disconnect, isConnected } from '@stacks/connect'
+
+// ❌ Manual connection state management
+const [isConnected, setIsConnected] = useState(false)
+const [address, setAddress] = useState<string>()
+
+const handleConnect = async () => {
+  try {
+    await connect()
+    const connected = isConnected()
+    setIsConnected(connected)
+    // Manual address fetching...
+  } catch (error) {
+    console.error('Connection failed:', error)
+  }
+}
+```
 
 #### Read-Only Function Call
 ```typescript
@@ -683,133 +857,99 @@ await openContractCall({
 })
 ```
 
-#### Multi-Argument Function
-```typescript
-import { makeContractCall } from '@stacks/transactions'
-import { defiProtocol } from './generated/contracts'
-
-// ❌ Complex tuple construction, easy to make mistakes
-const transaction = await makeContractCall({
-  contractAddress: 'SP2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9',
-  contractName: 'defi-protocol',
-  functionName: 'swap-tokens',
-  functionArgs: [
-    Cl.tuple({                                    // Manual tuple construction
-      'token-in': Cl.contractPrincipal(
-        'SP2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9',
-        'token-a'
-      ),
-      'token-out': Cl.contractPrincipal(
-        'SP2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9', 
-        'token-b'
-      ),
-      'amount-in': Cl.uint(1000000),
-      'min-amount-out': Cl.uint(950000)
-    }),
-    Cl.standardPrincipal('SP143YHR805B8S834BWJTMZVFR1WP5FFC03WZE4BF')
-  ],
-  senderKey: privateKey,
-})
-```
-
 ### With @stacks/codegen (Generated Approach)
 
-Clean, type-safe, and automatic ClarityValue conversion:
+Clean, type-safe, and automatic ClarityValue conversion with wagmi-inspired API:
+
+#### Connection Management
+```typescript
+import { useAccount, useConnect, useDisconnect } from './generated/stacks'
+
+// ✅ Clean, automatic state management
+function WalletConnection() {
+  const { address, isConnected, status } = useAccount()
+  const connect = useConnect()
+  const disconnect = useDisconnect()
+
+  if (!isConnected) {
+    return (
+      <button onClick={() => connect.mutate()}>
+        {connect.isPending ? 'Connecting...' : 'Connect Wallet'}
+      </button>
+    )
+  }
+
+  return (
+    <div>
+      <p>Connected: {address}</p>
+      <button onClick={() => disconnect.mutate()}>Disconnect</button>
+    </div>
+  )
+}
+```
 
 #### Read-Only Function Call
 ```typescript
-import { callReadOnlyFunction } from '@stacks/transactions'
+import { useReadContract } from './generated/stacks'
 import { sbtcToken } from './generated/contracts'
 
 // ✅ Clean, type-safe, automatic conversion
-const result = await callReadOnlyFunction({
-  ...sbtcToken.getBalance('SP143YHR805B8S834BWJTMZVFR1WP5FFC03WZE4BF'), // Auto-converted!
-  senderAddress: 'SP143YHR805B8S834BWJTMZVFR1WP5FFC03WZE4BF',
-  network: "mainnet",
-})
+function TokenBalance({ address }: { address: string }) {
+  const { data: balance, isLoading } = useReadContract({
+    contractAddress: 'SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4',
+    contractName: 'sbtc-token',
+    functionName: 'get-balance',
+    args: { who: address } // Auto-converted!
+  })
 
-// Or use object syntax for clarity
-const result2 = await callReadOnlyFunction({
-  ...sbtcToken.getBalance({ who: 'SP143YHR805B8S834BWJTMZVFR1WP5FFC03WZE4BF' }),
-  senderAddress: 'SP143YHR805B8S834BWJTMZVFR1WP5FFC03WZE4BF',
-  network: "mainnet",
-})
+  // Or use generated contract hook
+  const { data: balance2 } = useSbtcTokenGetBalance(address)
+
+  if (isLoading) return <div>Loading...</div>
+  return <div>Balance: {balance}</div>
+}
 ```
 
 #### Contract Call Transaction
 ```typescript
-import { openContractCall } from '@stacks/connect'
+import { useContract } from './generated/stacks'
+import { useNftContractTransfer } from './generated/hooks'
 import { nftContract } from './generated/contracts'
 
-// ✅ Type-safe, clean, automatic conversion
-await openContractCall({
-  ...nftContract.transfer(1n, 'SP2PABAF...', 'SP3FGQ8Z...'), // Auto-converted!
-  onFinish: data => console.log(data)
-})
+// ✅ Type-safe, clean, automatic conversion with broadcast API
+function NFTTransfer() {
+  // Option 1: Use generated contract hook
+  const transfer = useNftContractTransfer({
+    onSuccess: (data) => console.log('Success:', data)
+  })
 
-// Or use object syntax
-await openContractCall({
-  ...nftContract.transfer({
-    id: 1n,
-    sender: 'SP2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9',
-    recipient: 'SP3FGQ8Z7JY9BWYZ5WM53E0M9NK7WHJF0691NZ159'
-  }),
-  onFinish: data => console.log(data)
-})
-```
+  // Option 2: Use generic hook
+  const contract = useContract()
 
-#### Multi-Argument Function
-```typescript
-import { makeContractCall } from '@stacks/transactions'
-import { defiProtocol } from './generated/contracts'
-
-// ✅ TypeScript intellisense, automatic conversion, no manual tuple construction
-const transaction = await makeContractCall({
-  ...defiProtocol.swapTokens({
-    tokenIn: 'SP2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9.token-a',
-    tokenOut: 'SP2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9.token-b', 
-    amountIn: 1000000n,
-    minAmountOut: 950000n
-  }, 'SP143YHR805B8S834BWJTMZVFR1WP5FFC03WZE4BF'),
-  senderKey: privateKey,
-})
-```
-
-#### React Integration (Full Runtime + Hooks)
-```typescript
-import { useNftContractGetOwner, useNftContractTransfer } from './generated/hooks'
-import { useAccount } from './generated/stacks'
-
-// ✅ Type-safe React hooks with automatic state management
-function NFTComponent({ tokenId }: { tokenId: bigint }) {
-  // Automatic caching, loading states, and error handling
-  const { data: owner, isLoading, error } = useNftContractGetOwner(tokenId)
-  
-  // Mutation with built-in transaction handling
-  const transferMutation = useNftContractTransfer()
-  
-  // Generic blockchain hooks
-  const { data: account } = useAccount('SP...')
-
-  const handleTransfer = () => {
-    transferMutation.mutate({
-      id: tokenId,
-      sender: 'SP...',
-      recipient: 'SP...'
+  const handleTransfer1 = () => {
+    transfer.broadcast({
+      id: 1n,
+      sender: 'SP2PABAF...',
+      recipient: 'SP3FGQ8Z...'
     })
   }
 
-  if (isLoading) return <div>Loading...</div>
-  if (error) return <div>Error: {error.message}</div>
+  const handleTransfer2 = () => {
+    const contractCall = nftContract.transfer({
+      id: 1n,
+      sender: 'SP2PABAF...',
+      recipient: 'SP3FGQ8Z...'
+    })
+    contract.broadcast(contractCall)
+  }
 
   return (
     <div>
-      <p>Owner: {owner}</p>
-      <button 
-        onClick={handleTransfer}
-        disabled={transferMutation.isPending}
-      >
-        {transferMutation.isPending ? 'Transferring...' : 'Transfer NFT'}
+      <button onClick={handleTransfer1} disabled={transfer.isPending}>
+        {transfer.isPending ? 'Broadcasting...' : 'Transfer NFT (Generated Hook)'}
+      </button>
+      <button onClick={handleTransfer2} disabled={contract.isPending}>
+        {contract.isPending ? 'Broadcasting...' : 'Transfer NFT (Generic Hook)'}
       </button>
     </div>
   )
@@ -820,6 +960,7 @@ function NFTComponent({ tokenId }: { tokenId: bigint }) {
 
 | Manual Approach | @stacks/codegen Generated |
 |-----------------|----------------------|
+| ❌ Manual connection state | ✅ Automatic connection management |
 | ❌ Manual ClarityValue conversion | ✅ Automatic conversion |
 | ❌ No type safety | ✅ Full TypeScript support |
 | ❌ Error-prone string literals | ✅ Compile-time validation |
@@ -830,6 +971,8 @@ function NFTComponent({ tokenId }: { tokenId: bigint }) {
 | ❌ No React integration | ✅ Generated React hooks |
 | ❌ Manual state management | ✅ Built-in caching & loading states |
 | ❌ Complex error handling | ✅ Automatic error boundaries |
+| ❌ Inconsistent APIs | ✅ Wagmi-inspired consistency |
+| ❌ No SIP-030 support | ✅ Full `@stacks/connect` v8 integration |
 
 ## API Usage
 
