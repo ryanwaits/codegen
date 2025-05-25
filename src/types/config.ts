@@ -8,7 +8,7 @@ export interface ContractSource {
   /**
    * Contract identifier (address.name) for deployed contracts
    */
-  address?: string | Record<NetworkName, string>;
+  address?: string | Partial<Record<NetworkName, string>>;
 
   /**
    * Path to local Clarity file

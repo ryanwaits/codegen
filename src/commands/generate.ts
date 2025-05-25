@@ -28,24 +28,20 @@ export async function generate(options: GenerateOptions) {
     const config = await loadConfig(options.config);
     spinner.succeed("Configuration loaded");
 
-    const apiClient = new StacksApiClient(
-      config.network || "mainnet",
-      config.apiKey,
-      config.apiUrl
-    );
-
     spinner.start("Resolving contracts");
     const resolvedContracts: ResolvedContract[] = [];
 
     for (const contract of config.contracts) {
       try {
-        const resolved = await resolveContract(
+        const resolved = await resolveContracts(
           contract,
-          config.network || "mainnet",
-          apiClient
+          config.network,
+          config.apiKey,
+          config.apiUrl
         );
-        resolvedContracts.push(resolved);
-        spinner.text = `Resolved ${resolved.name}`;
+        resolvedContracts.push(...resolved);
+        const contractNames = resolved.map((r) => r.name).join(", ");
+        spinner.text = `Resolved ${contractNames}`;
       } catch (error: any) {
         spinner.fail(`Failed to resolve contract: ${error.message}`);
         throw error;
@@ -84,7 +80,8 @@ export async function generate(options: GenerateOptions) {
 async function resolveContract(
   source: ContractSource,
   network: NetworkName,
-  apiClient: StacksApiClient
+  apiKey?: string,
+  apiUrl?: string
 ): Promise<ResolvedContract> {
   // Handle local source files
   if (source.source) {
@@ -129,7 +126,11 @@ async function resolveContract(
       throw new Error(`No contract address for network ${network}`);
     }
 
-    const contractInfo = await apiClient.getContractInfo(contractId);
+    const contractInfo = await new StacksApiClient(
+      network,
+      apiKey,
+      apiUrl
+    ).getContractInfo(contractId);
     const abi = parseApiResponse(contractInfo);
 
     const [contractAddress, contractName] = contractId.split(".");
@@ -143,6 +144,75 @@ async function resolveContract(
       abi,
       source: "api",
     };
+  }
+
+  throw new Error("Contract must have either address or source");
+}
+
+async function resolveContracts(
+  source: ContractSource,
+  defaultNetwork: NetworkName | undefined,
+  apiKey?: string,
+  apiUrl?: string
+): Promise<ResolvedContract[]> {
+  // Handle single network contracts (existing behavior)
+  if (typeof source.address === "string" || source.source) {
+    const resolved = await resolveContract(
+      source,
+      defaultNetwork || "testnet", // Use testnet as fallback for single contracts
+      apiKey,
+      apiUrl
+    );
+    return [resolved];
+  }
+
+  // Handle multi-network contracts
+  if (source.address && typeof source.address === "object") {
+    const resolvedContracts: ResolvedContract[] = [];
+
+    // If defaultNetwork is specified, only generate that network
+    // If no network specified, generate all networks defined in the address object
+    const networksToGenerate = defaultNetwork
+      ? [defaultNetwork].filter(
+          (net) => (source.address as Partial<Record<NetworkName, string>>)[net]
+        ) // Only if address exists for that network
+      : (Object.keys(source.address) as NetworkName[]);
+
+    for (const network of networksToGenerate) {
+      const contractId = source.address[network];
+      if (!contractId) continue;
+
+      try {
+        const networkApiClient = new StacksApiClient(network, apiKey, apiUrl);
+
+        const contractInfo = await networkApiClient.getContractInfo(contractId);
+        const abi = parseApiResponse(contractInfo);
+
+        const [contractAddress, contractName] = contractId.split(".");
+        const baseName =
+          source.name || contractName.replace(/-/g, "_").replace(/^\d/, "_$&");
+
+        // Generate network-specific names
+        const name =
+          network === "mainnet"
+            ? baseName
+            : `${network}${baseName.charAt(0).toUpperCase() + baseName.slice(1)}`;
+
+        resolvedContracts.push({
+          name,
+          address: contractAddress,
+          contractName,
+          abi,
+          source: "api",
+        });
+      } catch (error: any) {
+        console.warn(
+          `Warning: Failed to resolve contract for ${network}: ${error.message}`
+        );
+      }
+    }
+
+    return resolvedContracts;
   }
 
   throw new Error("Contract must have either address or source");
