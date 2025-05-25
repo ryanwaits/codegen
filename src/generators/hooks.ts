@@ -8,6 +8,11 @@ import type { ClarityFunction } from "clarity-abitype";
 
 const GENERIC_HOOKS = [
   "useAccount",
+  "useConnect",
+  "useDisconnect",
+  "useNetwork",
+  "useContract",
+  "useReadContract",
   "useTransaction",
   "useBlock",
   "useAccountTransactions",
@@ -19,7 +24,7 @@ export async function generateContractHooks(
 ): Promise<string> {
   const imports = `import { useQuery, useMutation } from '@tanstack/react-query'
 import { useStacksConfig } from './provider'
-import { openContractCall } from '@stacks/connect'
+import { useContract } from './stacks'
 import { ${contracts.map((c) => c.name).join(", ")} } from './contracts'`;
 
   const header = `/**
@@ -49,8 +54,9 @@ export async function generateGenericHooks(
 ): Promise<string> {
   const hooksToGenerate = includeHooks || [...GENERIC_HOOKS];
 
-  const imports = `import { useQuery, useMutation } from '@tanstack/react-query'
+  const imports = `import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useStacksConfig } from './provider'
+import { connect, disconnect, isConnected, request, openContractCall } from '@stacks/connect'
 import { 
   fetchAccountInfo, 
   fetchTransaction, 
@@ -133,34 +139,321 @@ function generateWriteHook(
   const hookName = `use${capitalize(contractName)}${capitalize(toCamelCase(func.name))}`;
   const argsType = generateArgsType(func.args);
 
-  return `export function ${hookName}() {
-  return useMutation({
-    mutationFn: (args: ${argsType}) =>
-      new Promise((resolve, reject) => {
-        openContractCall({
-          ...${contractName}.${toCamelCase(func.name)}(args),
-          onFinish: resolve,
-          onCancel: () => reject(new Error('User cancelled transaction'))
-        })
-      })
-  })
+  return `export function ${hookName}(options?: {
+  onSuccess?: (data: any) => void;
+  onError?: (error: Error) => void;
+}) {
+  const contract = useContract<any, any>(options)
+  
+  return {
+    ...contract,
+    broadcast: (args: ${argsType}) => {
+      const contractCallData = ${contractName}.${toCamelCase(func.name)}(args)
+      contract.broadcast(contractCallData)
+    },
+    broadcastAsync: async (args: ${argsType}) => {
+      const contractCallData = ${contractName}.${toCamelCase(func.name)}(args)
+      return contract.broadcastAsync(contractCallData)
+    }
+  }
 }`;
 }
 
 function generateGenericHook(hookName: string): string {
   switch (hookName) {
     case "useAccount":
-      return `export function useAccount(address?: string) {
+      return `export function useAccount() {
   const config = useStacksConfig()
   
   return useQuery({
-    queryKey: ['account', address, config.network],
-    queryFn: () => fetchAccountInfo({
-      address: address!,
-      network: config.network,
-      apiUrl: config.apiUrl
-    }),
-    enabled: !!address
+    queryKey: ['stacks-account', config.network],
+    queryFn: async () => {
+      try {
+        // Check if already connected using @stacks/connect v8
+        const connected = isConnected()
+        
+        if (!connected) {
+          return {
+            address: undefined,
+            addresses: undefined,
+            isConnected: false,
+            isConnecting: false,
+            isDisconnected: true,
+            status: 'disconnected' as const
+          }
+        }
+
+        // Get addresses using @stacks/connect v8 request method (SIP-030)
+        const result = await request('stx_getAddresses')
+        
+        if (!result || !result.addresses || result.addresses.length === 0) {
+          return {
+            address: undefined,
+            addresses: undefined,
+            isConnected: false,
+            isConnecting: false,
+            isDisconnected: true,
+            status: 'disconnected' as const
+          }
+        }
+
+        // Extract STX addresses from the response
+        const stxAddresses = result.addresses
+          .filter((addr: any) => addr.address.startsWith('SP') || addr.address.startsWith('ST'))
+          .map((addr: any) => addr.address)
+
+        return {
+          address: stxAddresses[0] || undefined,
+          addresses: stxAddresses,
+          isConnected: true,
+          isConnecting: false,
+          isDisconnected: false,
+          status: 'connected' as const
+        }
+      } catch (error) {
+        // Handle case where wallet is not available or user rejected
+        return {
+          address: undefined,
+          addresses: undefined,
+          isConnected: false,
+          isConnecting: false,
+          isDisconnected: true,
+          status: 'disconnected' as const
+        }
+      }
+    },
+    refetchOnWindowFocus: false,
+    retry: false,
+    staleTime: 1000 * 60 * 5, // 5 minutes
+    refetchInterval: 1000 * 30, // Refetch every 30 seconds to detect wallet changes
+  })
+}`;
+
+    case "useConnect":
+      return `export function useConnect() {
+  const queryClient = useQueryClient()
+  
+  const mutation = useMutation({
+    mutationFn: async (options: { forceWalletSelect?: boolean } = {}) => {
+      // Use @stacks/connect v8 connect method
+      return await connect(options)
+    },
+    onSuccess: () => {
+      // Invalidate account queries to refetch connection state
+      queryClient.invalidateQueries({ queryKey: ['stacks-account'] })
+    },
+    onError: (error) => {
+      console.error('Connection failed:', error)
+    }
+  })
+
+  return {
+    // Custom connect function that works without arguments
+    connect: (options?: { forceWalletSelect?: boolean }) => {
+      return mutation.mutate(options || {})
+    },
+    connectAsync: async (options?: { forceWalletSelect?: boolean }) => {
+      return mutation.mutateAsync(options || {})
+    },
+    // Expose all the mutation state
+    isPending: mutation.isPending,
+    isError: mutation.isError,
+    isSuccess: mutation.isSuccess,
+    error: mutation.error,
+    data: mutation.data,
+    reset: mutation.reset,
+    // Keep the original mutate/mutateAsync for advanced users
+    mutate: mutation.mutate,
+    mutateAsync: mutation.mutateAsync
+  }
+}`;
+
+    case "useDisconnect":
+      return `export function useDisconnect() {
+  const queryClient = useQueryClient()
+  
+  const mutation = useMutation({
+    mutationFn: async () => {
+      // Use @stacks/connect v8 disconnect method
+      return await disconnect()
+    },
+    onSuccess: () => {
+      // Clear all cached data on disconnect
+      queryClient.clear()
+    },
+    onError: (error) => {
+      console.error('Disconnect failed:', error)
+    }
+  })
+
+  return {
+    // Custom disconnect function
+    disconnect: () => {
+      return mutation.mutate()
+    },
+    disconnectAsync: async () => {
+      return mutation.mutateAsync()
+    },
+    // Expose all the mutation state
+    isPending: mutation.isPending,
+    isError: mutation.isError,
+    isSuccess: mutation.isSuccess,
+    error: mutation.error,
+    data: mutation.data,
+    reset: mutation.reset,
+    // Keep the original mutate/mutateAsync for advanced users
+    mutate: mutation.mutate,
+    mutateAsync: mutation.mutateAsync
+  }
+}`;
+
+    case "useNetwork":
+      return `export function useNetwork() {
+  const config = useStacksConfig()
+  
+  return useQuery({
+    queryKey: ['stacks-network', config.network],
+    queryFn: async () => {
+      // Currently read-only from config
+      // Future: Use request('stx_getNetworks') when wallet support improves
+      const network = config.network
+      
+      return {
+        network,
+        isMainnet: network === 'mainnet',
+        isTestnet: network === 'testnet', 
+        isDevnet: network === 'devnet',
+        // Future: Add switchNetwork when wallets support stx_networkChange
+        // switchNetwork: async (newNetwork: string) => {
+        //   return await request('wallet_changeNetwork', { network: newNetwork })
+        // }
+      }
+    },
+    staleTime: Infinity, // Network config rarely changes
+    refetchOnWindowFocus: false,
+    retry: false
+  })
+}`;
+
+    case "useContract":
+      return `export function useContract<TArgs = any, TResult = any>(options?: {
+  onSuccess?: (data: TResult) => void;
+  onError?: (error: Error) => void;
+}) {
+  const config = useStacksConfig()
+  const queryClient = useQueryClient()
+  
+  const mutation = useMutation<TResult, Error, { contractAddress: string; contractName: string; functionName: string; functionArgs: any[]; network?: string }>({
+    mutationFn: async (contractCall) => {
+      try {
+        const { contractAddress, contractName, functionName, functionArgs } = contractCall
+        const network = contractCall.network || config.network || 'mainnet'
+        const contract = \`\${contractAddress}.\${contractName}\`
+        
+        // Try @stacks/connect v8 stx_callContract first (SIP-030)
+        try {
+          const result = await request('stx_callContract', {
+            contract,
+            functionName,
+            functionArgs,
+            network
+          })
+          
+          return result as TResult
+        } catch (connectError) {
+          // Fallback to openContractCall for broader wallet compatibility
+          console.warn('stx_callContract not supported, falling back to openContractCall:', connectError)
+          
+          return new Promise<TResult>((resolve, reject) => {
+            openContractCall({
+              contractAddress,
+              contractName,
+              functionName,
+              functionArgs,
+              network,
+              onFinish: (data: any) => {
+                resolve(data as TResult)
+              },
+              onCancel: () => {
+                reject(new Error('User cancelled transaction'))
+              }
+            })
+          })
+        }
+      } catch (error) {
+        throw error instanceof Error ? error : new Error('Contract call failed')
+      }
+    },
+    onSuccess: (data) => {
+      // Invalidate relevant queries
+      queryClient.invalidateQueries({ 
+        queryKey: ['stacks-account'] 
+      })
+      
+      // Call user-provided success handler
+      options?.onSuccess?.(data)
+    },
+    onError: (error) => {
+      console.error('Contract call failed:', error)
+      options?.onError?.(error)
+    }
+  })
+  
+  return {
+    broadcast: mutation.mutate,
+    broadcastAsync: mutation.mutateAsync,
+    isPending: mutation.isPending,
+    isError: mutation.isError,
+    isSuccess: mutation.isSuccess,
+    error: mutation.error,
+    data: mutation.data,
+    reset: mutation.reset
+  }
+}`;
+
+    case "useReadContract":
+      return `export function useReadContract<TArgs = any, TResult = any>(params: {
+  contractAddress: string;
+  contractName: string;
+  functionName: string;
+  args?: TArgs;
+  network?: 'mainnet' | 'testnet' | 'devnet';
+  enabled?: boolean;
+}) {
+  const config = useStacksConfig()
+  
+  return useQuery<TResult>({
+    queryKey: ['read-contract', params.contractAddress, params.contractName, params.functionName, params.args, params.network || config.network],
+    queryFn: async () => {
+      const { fetchCallReadOnlyFunction } = await import('@stacks/transactions')
+      
+      // For now, we'll need to handle the args conversion here
+      // In the future, we could integrate with the contract interface for automatic conversion
+      let functionArgs: any[] = []
+      
+      if (params.args) {
+        // This is a simplified conversion - in practice, we'd need the ABI to do proper conversion
+        // For now, we'll assume the args are already in the correct format or simple types
+        if (Array.isArray(params.args)) {
+          functionArgs = params.args
+        } else if (typeof params.args === 'object') {
+          // Convert object args to array (this is a basic implementation)
+          functionArgs = Object.values(params.args)
+        } else {
+          functionArgs = [params.args]
+        }
+      }
+      
+      return await fetchCallReadOnlyFunction({
+        contractAddress: params.contractAddress,
+        contractName: params.contractName,
+        functionName: params.functionName,
+        functionArgs,
+        network: params.network || config.network || 'mainnet',
+        senderAddress: config.senderAddress || 'SP000000000000000000002Q6VF78'
+      }) as TResult
+    },
+    enabled: params.enabled ?? true
   })
 }`;
 
