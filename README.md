@@ -5,11 +5,13 @@ CLI tool for generating type-safe contract interfaces for Stacks blockchain appl
 ## Features
 
 - 🎯 **Type-safe contract interfaces** - Full TypeScript support with type inference
+- ⚛️ **React hooks generation** - Auto-generated hooks for seamless React integration
 - 📦 **Multiple sources** - Fetch from deployed contracts or parse local Clarity files
 - 🔧 **Simple configuration** - Easy setup with `stacks.config.ts`
 - 🚀 **Zero runtime overhead** - Generates plain objects, no heavy dependencies
 - 🔄 **Multi-network support** - Different addresses for mainnet/testnet
 - 🎨 **Clean output** - Formatted, readable TypeScript code
+- 📡 **Generic Stacks hooks** - Built-in hooks for common blockchain operations
 
 ## Installation
 
@@ -112,7 +114,18 @@ export default defineConfig({
     }
   ],
   output: {
-    path: './src/generated/contracts.ts'
+    path: './src/generated/contracts.ts',
+    runtime: 'full', // Required for React hooks
+    hooks: {
+      enabled: true,
+      contracts: './src/generated/hooks.ts',    // Contract-specific hooks
+      stacks: './src/generated/stacks.ts',      // Generic blockchain hooks
+      include: [                                // Optional: specify which generic hooks to include
+        'useAccount',
+        'useTransaction',
+        'useBlock'
+      ]
+    }
   }
 })
 ```
@@ -229,6 +242,11 @@ await openContractCall({
 
 - `output.path` - Where to generate the TypeScript file
 - `output.runtime` - `'minimal'` (default) or `'full'`
+- `output.hooks` - React hooks configuration (requires `runtime: 'full'`)
+  - `enabled` - Whether to generate React hooks
+  - `contracts` - Path for contract-specific hooks file
+  - `stacks` - Path for generic Stacks hooks file  
+  - `include` - Array of generic hooks to include (optional)
 - `network` - `'testnet'` (default), `'mainnet'`, `'devnet'`, or `'simnet'`
 - `apiKey` - Optional API key for higher rate limits
 - `apiUrl` - Optional custom API URL
@@ -236,6 +254,12 @@ await openContractCall({
 **Network Behavior:**
 - **Multi-network contracts**: If `network` is specified, only that network is generated. If omitted, all defined networks are generated.
 - **Single-network contracts**: Uses `network` for API selection, defaults to `testnet`.
+
+**Hooks Configuration:**
+- Requires `runtime: 'full'` to be enabled
+- Automatically installs required React dependencies
+- Generates type-safe hooks for all contract functions
+- Includes generic blockchain operation hooks
 
 ## Runtime Configurations
 
@@ -269,69 +293,62 @@ export const nftContract = {
 - ✅ Smallest possible bundle size
 - ✅ Works with any framework
 
-### Full Runtime (Planned)
+### Full Runtime (Enhanced)
 
-The full runtime will include additional helper functions and utilities:
+The full runtime includes additional helper functions and utilities:
 
 ```typescript
 export const nftContract = {
   // Basic methods (same as minimal)
   transfer(id: bigint, sender: string, recipient: string) { /* ... */ },
   
-  // Additional utilities
-  utils: {
-    // Simplified contract calling
-    async callTransfer(args: TransferArgs, options?: CallOptions) {
-      return await openContractCall({
-        ...nftContract.transfer(args),
+  // Read-only helpers with automatic network handling
+  read: {
+    async getOwner(args: { id: bigint }, options?: { 
+      network?: 'mainnet' | 'testnet' | 'devnet';
+      senderAddress?: string;
+    }) {
+      return await fetchCallReadOnlyFunction({
+        contractAddress: 'SP2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9',
+        contractName: 'nft-nyc',
+        functionName: 'get-owner',
+        functionArgs: [Cl.uint(args.id)],
+        network: options?.network || 'mainnet',
+        senderAddress: options?.senderAddress || 'SP000000000000000000002Q6VF78'
+      })
+    }
+  },
+  
+  // Write helpers with transaction building
+  write: {
+    async transfer(args: { id: bigint; sender: string; recipient: string }, options: {
+      senderKey: string;
+      network?: 'mainnet' | 'testnet' | 'devnet';
+      fee?: string | number;
+      nonce?: bigint;
+    }) {
+      return await makeContractCall({
+        contractAddress: 'SP2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9',
+        contractName: 'nft-nyc',
+        functionName: 'transfer',
+        functionArgs: [Cl.uint(args.id), Cl.standardPrincipal(args.sender), Cl.standardPrincipal(args.recipient)],
+        senderKey: options.senderKey,
+        network: options.network || 'mainnet',
         ...options
       })
-    },
-    
-    // Read-only function helpers
-    async readOwner(id: bigint, network: NetworkName = 'mainnet') {
-      return await callReadOnlyFunction({
-        ...nftContract.getOwner(id),
-        network,
-        senderAddress: 'SP000000000000000000002Q6VF78'
-      })
-    }
-  },
-  
-  // React hooks (if React is detected)
-  hooks: {
-    useTransfer() {
-      return useMutation({
-        mutationFn: (args: TransferArgs) => 
-          nftContract.utils.callTransfer(args)
-      })
-    },
-    
-    useOwner(id: bigint) {
-      return useQuery({
-        queryKey: ['nft-owner', id],
-        queryFn: () => nftContract.utils.readOwner(id)
-      })
-    }
-  },
-  
-  // Event listeners
-  events: {
-    onTransfer(callback: (event: TransferEvent) => void) {
-      // Set up event listening
     }
   }
 } as const
 ```
 
-**Planned Features for Full Runtime:**
-- 🔄 Built-in transaction helpers
-- ⚛️ React hooks generation (when React is detected)
-- 📡 Event listening utilities
-- 🔁 Automatic retry logic
-- 📊 Transaction status tracking
-- 🛡️ Enhanced error handling
-- 🎯 Response type parsing
+**Full Runtime Features:**
+- ✅ Built-in read-only function helpers
+- ✅ Transaction building utilities  
+- ✅ Network configuration handling
+- ✅ React hooks generation (when React is detected)
+- ✅ Automatic dependency management
+- ✅ Enhanced error handling
+- ✅ Type-safe API wrappers
 
 ### Configuration
 
@@ -340,16 +357,247 @@ export default defineConfig({
   contracts: [/* ... */],
   output: {
     path: './src/contracts.ts',
-    runtime: 'minimal' // or 'full'
+    runtime: 'minimal', // or 'full'
+    hooks: {
+      enabled: true,
+      contracts: './src/generated/hooks.ts',
+      stacks: './src/generated/stacks.ts',
+      include: ['useAccount', 'useTransaction', 'useBlock'] // Optional
+    }
   }
 })
 ```
 
 **When to use each:**
 - **Minimal**: Production apps, libraries, when bundle size matters
-- **Full**: Rapid prototyping, internal tools, when developer experience is prioritized
+- **Full**: Rapid prototyping, internal tools, when developer experience is prioritized, React applications
 
-> **Note**: Full runtime is currently in development. The minimal runtime is production-ready and recommended for most use cases.
+**React Hooks Requirements:**
+- Must use `runtime: 'full'`
+- Requires React project with package.json
+- Dependencies are automatically installed
+
+## React Hooks Integration
+
+@stacks/codegen can generate React hooks for seamless integration with React applications. This feature requires the full runtime mode and automatically installs necessary dependencies.
+
+### Configuration
+
+Enable React hooks in your `stacks.config.ts`:
+
+```typescript
+import { defineConfig } from '@stacks/codegen'
+
+export default defineConfig({
+  contracts: [
+    {
+      address: 'SP2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9.nft-nyc',
+      name: 'nftContract'
+    }
+  ],
+  output: {
+    path: './src/generated/contracts.ts',
+    runtime: 'full', // Required for React hooks
+    hooks: {
+      enabled: true,
+      contracts: './src/generated/hooks.ts',    // Contract-specific hooks
+      stacks: './src/generated/stacks.ts',      // Generic blockchain hooks
+      include: [                                // Optional: specify which generic hooks to include
+        'useAccount',
+        'useTransaction',
+        'useBlock'
+      ]
+    }
+  }
+})
+```
+
+### Generated Contract Hooks
+
+For each contract function, the CLI generates corresponding React hooks:
+
+```typescript
+// Generated hooks.ts
+import { useQuery, useMutation } from '@tanstack/react-query'
+import { nftContract } from './contracts'
+
+// Read-only function hooks
+export function useNftContractGetOwner(id: bigint, options?: { enabled?: boolean }) {
+  const config = useStacksConfig()
+  
+  return useQuery({
+    queryKey: ['get-owner', nftContract.address, id],
+    queryFn: () => nftContract.read.getOwner({ id }, { 
+      network: config.network,
+      senderAddress: config.senderAddress 
+    }),
+    enabled: id !== undefined && (options?.enabled ?? true),
+    ...options
+  })
+}
+
+// Public function hooks
+export function useNftContractTransfer() {
+  return useMutation({
+    mutationFn: (args: { id: bigint; sender: string; recipient: string }) =>
+      new Promise((resolve, reject) => {
+        openContractCall({
+          ...nftContract.transfer(args),
+          onFinish: resolve,
+          onCancel: () => reject(new Error('User cancelled transaction'))
+        })
+      })
+  })
+}
+```
+
+### Generic Stacks Hooks
+
+The CLI also generates hooks for common blockchain operations:
+
+```typescript
+// Generated stacks.ts
+export function useAccount(address?: string) {
+  const config = useStacksConfig()
+  
+  return useQuery({
+    queryKey: ['account', address, config.network],
+    queryFn: () => fetchAccountInfo({
+      address: address!,
+      network: config.network
+    }),
+    enabled: !!address
+  })
+}
+
+export function useTransaction(txId?: string) {
+  const config = useStacksConfig()
+  
+  return useQuery({
+    queryKey: ['transaction', txId, config.network],
+    queryFn: () => fetchTransaction({
+      txId: txId!,
+      network: config.network
+    }),
+    enabled: !!txId
+  })
+}
+
+export function useBlock(height?: number) {
+  const config = useStacksConfig()
+  
+  return useQuery({
+    queryKey: ['block', height, config.network],
+    queryFn: () => fetchBlock({
+      height: height!,
+      network: config.network
+    }),
+    enabled: typeof height === 'number'
+  })
+}
+
+export function useAccountTransactions(address?: string) {
+  const config = useStacksConfig()
+  
+  return useQuery({
+    queryKey: ['account-transactions', address, config.network],
+    queryFn: () => fetchAccountTransactions({
+      address: address!,
+      network: config.network
+    }),
+    enabled: !!address
+  })
+}
+```
+
+**Available Generic Hooks:**
+- `useAccount` - Fetch account information and balances
+- `useTransaction` - Get transaction details and status
+- `useBlock` - Retrieve block information by height
+- `useAccountTransactions` - Get transaction history for an account
+- `useWaitForTransaction` - Wait for transaction confirmation (coming soon)
+
+You can specify which hooks to include in your configuration:
+
+```typescript
+export default defineConfig({
+  // ...
+  output: {
+    hooks: {
+      enabled: true,
+      stacks: './src/generated/stacks.ts',
+      include: ['useAccount', 'useTransaction'] // Only generate these hooks
+    }
+  }
+})
+```
+
+### React Provider Setup
+
+The CLI generates a provider component for configuration:
+
+```typescript
+// Generated provider.ts
+import { StacksQueryProvider, createStacksConfig } from './provider'
+
+function App() {
+  const config = createStacksConfig({
+    network: 'mainnet',
+    senderAddress: 'SP...' // Optional default sender for read-only calls
+  })
+
+  return (
+    <StacksQueryProvider config={config}>
+      <YourApp />
+    </StacksQueryProvider>
+  )
+}
+```
+
+### Usage in Components
+
+```typescript
+import { useNftContractGetOwner, useNftContractTransfer } from './generated/hooks'
+import { useAccount } from './generated/stacks'
+
+function NFTComponent({ tokenId }: { tokenId: bigint }) {
+  // Get token owner
+  const { data: owner, isLoading } = useNftContractGetOwner(tokenId)
+  
+  // Transfer mutation
+  const transferMutation = useNftContractTransfer()
+  
+  // Get current user account
+  const { data: account } = useAccount('SP...')
+
+  const handleTransfer = () => {
+    transferMutation.mutate({
+      id: tokenId,
+      sender: 'SP...',
+      recipient: 'SP...'
+    })
+  }
+
+  if (isLoading) return <div>Loading...</div>
+
+  return (
+    <div>
+      <p>Owner: {owner}</p>
+      <button onClick={handleTransfer}>Transfer NFT</button>
+    </div>
+  )
+}
+```
+
+### Dependencies
+
+When hooks are enabled, the CLI automatically installs required dependencies:
+
+- `react`
+- `@tanstack/react-query`
+- `@stacks/transactions`
+- `@stacks/connect`
+- `@types/react` (dev dependency)
 
 ## Generated Code
 
@@ -437,7 +685,8 @@ await openContractCall({
 
 #### Multi-Argument Function
 ```typescript
-import { makeContractCall, Cl } from '@stacks/transactions'
+import { makeContractCall } from '@stacks/transactions'
+import { defiProtocol } from './generated/contracts'
 
 // ❌ Complex tuple construction, easy to make mistakes
 const transaction = await makeContractCall({
@@ -526,6 +775,47 @@ const transaction = await makeContractCall({
 })
 ```
 
+#### React Integration (Full Runtime + Hooks)
+```typescript
+import { useNftContractGetOwner, useNftContractTransfer } from './generated/hooks'
+import { useAccount } from './generated/stacks'
+
+// ✅ Type-safe React hooks with automatic state management
+function NFTComponent({ tokenId }: { tokenId: bigint }) {
+  // Automatic caching, loading states, and error handling
+  const { data: owner, isLoading, error } = useNftContractGetOwner(tokenId)
+  
+  // Mutation with built-in transaction handling
+  const transferMutation = useNftContractTransfer()
+  
+  // Generic blockchain hooks
+  const { data: account } = useAccount('SP...')
+
+  const handleTransfer = () => {
+    transferMutation.mutate({
+      id: tokenId,
+      sender: 'SP...',
+      recipient: 'SP...'
+    })
+  }
+
+  if (isLoading) return <div>Loading...</div>
+  if (error) return <div>Error: {error.message}</div>
+
+  return (
+    <div>
+      <p>Owner: {owner}</p>
+      <button 
+        onClick={handleTransfer}
+        disabled={transferMutation.isPending}
+      >
+        {transferMutation.isPending ? 'Transferring...' : 'Transfer NFT'}
+      </button>
+    </div>
+  )
+}
+```
+
 ### Key Benefits
 
 | Manual Approach | @stacks/codegen Generated |
@@ -537,6 +827,9 @@ const transaction = await makeContractCall({
 | ❌ Verbose boilerplate | ✅ Clean, readable code |
 | ❌ Easy to make mistakes | ✅ Type-safe by design |
 | ❌ Manual ABI management | ✅ Auto-synced with contracts |
+| ❌ No React integration | ✅ Generated React hooks |
+| ❌ Manual state management | ✅ Built-in caching & loading states |
+| ❌ Complex error handling | ✅ Automatic error boundaries |
 
 ## API Usage
 
@@ -585,6 +878,36 @@ Get a free API key from [Hiro](https://platform.hiro.so/).
 Make sure the contract address includes both the deployer address and contract name:
 - ✅ `SP2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9.nft-nyc`
 - ❌ `SP2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9`
+
+### React Hooks Dependencies
+When React hooks are enabled, the CLI automatically installs required dependencies. If you encounter issues:
+
+1. **Ensure you have a `package.json`** in your project root
+2. **Check your package manager** - The CLI supports npm, yarn, pnpm, and bun
+3. **Manual installation** - If automatic installation fails, install dependencies manually:
+
+```bash
+npm install react @tanstack/react-query @stacks/transactions @stacks/connect
+npm install -D @types/react
+```
+
+4. **Provider setup** - Make sure to wrap your app with the generated provider:
+
+```typescript
+import { StacksQueryProvider, createStacksConfig } from './generated/provider'
+
+function App() {
+  const config = createStacksConfig({
+    network: 'mainnet'
+  })
+
+  return (
+    <StacksQueryProvider config={config}>
+      <YourApp />
+    </StacksQueryProvider>
+  )
+}
+```
 
 ## License
 
