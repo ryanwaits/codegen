@@ -183,7 +183,7 @@ function BNSApp() {
 ```typescript
 import { bnsV2 } from './generated/contracts'
 
-// Direct usage with openContractCall
+// Direct usage with openContractCall from `@stacks/connect`
 await openContractCall({
   ...bnsV2.transfer({
     id: 1n,
@@ -193,10 +193,10 @@ await openContractCall({
   onFinish: data => console.log(data)
 })
 
-// Read-only functions (full runtime)
+// Read-only functions
 const owner = await bnsV2.read.getOwner({ id: 1n })
 
-// Write functions with private key (full runtime)
+// Write functions with private key
 const result = await bnsV2.write.transfer({
   id: 1n,
   owner: 'SP...',
@@ -216,7 +216,7 @@ const result = await bnsV2.write.transfer({
 const { data: owner, isLoading } = useBnsV2GetOwner(1n)
 const { data: tokenUri } = useBnsV2GetTokenUri(1n)
 
-// Write hooks with micro-stacks API
+// Write hooks
 const { transfer, isRequestPending } = useBnsV2Transfer()
 
 await transfer({
