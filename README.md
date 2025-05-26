@@ -7,11 +7,12 @@ Generate type-safe React hooks and contract interfaces for Stacks blockchain app
 **Before** - Manual, error-prone contract interactions:
 ```typescript
 // ❌ Manual Clarity conversion, no type safety
-import { openContractCall, Cl } from '@stacks/connect'
+import { openContractCall } from '@stacks/connect'
+import { Cl } from '@stacks/transactions'
 
 await openContractCall({
-  contractAddress: 'SP2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9',
-  contractName: 'nft-contract', 
+  contractAddress: 'SP2QEZ06AGJ3RKJPBV14SY1V5BBFNAW33D96YPGZF',
+  contractName: 'BNS-V2', 
   functionName: 'transfer',
   functionArgs: [
     Cl.uint(1),                                                    // Manual conversion
@@ -25,27 +26,19 @@ await openContractCall({
 **After** - Type-safe, automatic conversion:
 ```typescript
 // ✅ Type-safe, automatic Clarity conversion, React hooks
-import { useNftContractTransfer } from './generated/hooks'
+import { useBnsV2Transfer } from './generated/hooks'
 
-function NFTTransfer() {
-  const { transfer, isRequestPending } = useNftContractTransfer()
+const { transfer, isRequestPending } = useBnsV2Transfer()
   
-  const handleTransfer = () => {
-    transfer({
-      id: 1n,                    // Auto-converted to Cl.uint()
-      sender: 'SP2PABAF...',     // Auto-converted to Cl.standardPrincipal()
-      recipient: 'SP3FGQ8Z...'   // Auto-converted to Cl.standardPrincipal()
-    }, {
-      onFinish: data => console.log('Success:', data),
-      onCancel: () => console.log('Cancelled')
-    })
-  }
-
-  return (
-    <button onClick={handleTransfer} disabled={isRequestPending}>
-      {isRequestPending ? 'Transferring...' : 'Transfer NFT'}
-    </button>
-  )
+const handleTransfer = async () => {
+  await transfer({
+    id: 1n,                    // Auto-converted to Cl.uint()
+    owner: 'SP2PABAF...',      // Auto-converted to Cl.standardPrincipal()
+    recipient: 'SP3FGQ8Z...'   // Auto-converted to Cl.standardPrincipal()
+  }, {
+    onFinish: data => console.log('Success:', data),
+    onCancel: () => console.log('Cancelled')
+  })
 }
 ```
 
@@ -59,14 +52,50 @@ function NFTTransfer() {
 
 ## Installation
 
+> **Note:** This package is not yet published to npm. Publishing coming soon! For now, you can install it locally:
+
+### Local Development Setup
+
+1. **Clone and build the package**
+```bash
+git clone https://github.com/your-org/stacks-codegen.git
+cd stacks-codegen
+bun install
+bun run build
+```
+
+2. **Link globally for CLI usage**
+```bash
+bun link
+```
+
+3. **In your project, link the package**
+```bash
+cd /path/to/your/project
+bun link @stacks/codegen
+```
+
+4. **Or install as a dev dependency directly from git**
+```bash
+# Alternative: Install directly from git
+bun add -D git+https://github.com/your-org/stacks-codegen.git
+```
+
+### Once Published (Coming Soon)
 ```bash
 npm install -D @stacks/codegen
+# or
+bun add -D @stacks/codegen
 ```
 
 ## Quick Start
 
 1. **Initialize configuration**
 ```bash
+# If you used bun link:
+stacks init
+
+# If you installed from git:
 npx stacks init
 ```
 
@@ -77,8 +106,20 @@ import { defineConfig } from '@stacks/codegen'
 export default defineConfig({
   contracts: [
     {
-      address: 'SP2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9.nft-contract',
-      name: 'nftContract'
+      address: 'SP2QEZ06AGJ3RKJPBV14SY1V5BBFNAW33D96YPGZF.BNS-V2'
+    },
+    
+    {
+      address: {
+        mainnet: 'SP2QEZ06AGJ3RKJPBV14SY1V5BBFNAW33D96YPGZF.BNS-V2',
+        testnet: 'ST2QEZ06AGJ3RKJPBV14SY1V5BBFNAW33D96YPGZF.BNS-V2-TEST'
+      },
+      name: 'bnsContract'
+    },
+    
+    {
+      source: './contracts/my-token.clar',
+      name: 'tokenContract'
     }
   ],
   output: {
@@ -95,19 +136,23 @@ export default defineConfig({
 
 3. **Generate interfaces**
 ```bash
+# If you used bun link:
+stacks generate
+
+# If you installed from git:
 npx stacks generate
 ```
 
 4. **Use in your React app**
 ```typescript
-import { useNftContractTransfer, useNftContractGetOwner } from './generated/hooks'
+import { useBnsV2Transfer, useBnsV2GetOwner } from './generated/hooks'
 import { useAccount, useConnect } from './generated/stacks'
 
-function NFTApp() {
+function BNSApp() {
   const { address, isConnected } = useAccount()
   const { connect } = useConnect()
-  const { data: owner } = useNftContractGetOwner(1n) // Auto-converted
-  const { transfer, isRequestPending } = useNftContractTransfer()
+  const { data: owner } = useBnsV2GetOwner(1n) // Auto-converted
+  const { transfer, isRequestPending } = useBnsV2Transfer()
 
   if (!isConnected) {
     return <button onClick={() => connect()}>Connect Wallet</button>
@@ -115,16 +160,16 @@ function NFTApp() {
 
   return (
     <div>
-      <p>NFT Owner: {owner}</p>
+      <p>BNS Name Owner: {owner}</p>
       <button 
         onClick={() => transfer({
           id: 1n,
-          sender: address!,
+          owner: address!,
           recipient: 'SP3FGQ8Z7JY9BWYZ5WM53E0M9NK7WHJF0691NZ159'
         })}
         disabled={isRequestPending}
       >
-        Transfer NFT
+        Transfer BNS Name
       </button>
     </div>
   )
@@ -136,25 +181,25 @@ function NFTApp() {
 ### Generated Contract Objects
 
 ```typescript
-import { nftContract } from './generated/contracts'
+import { bnsV2 } from './generated/contracts'
 
 // Direct usage with openContractCall
 await openContractCall({
-  ...nftContract.transfer({
+  ...bnsV2.transfer({
     id: 1n,
-    sender: 'SP...',
+    owner: 'SP...',
     recipient: 'SP...'
   }),
   onFinish: data => console.log(data)
 })
 
 // Read-only functions (full runtime)
-const balance = await nftContract.read.getBalance({ owner: 'SP...' })
+const owner = await bnsV2.read.getOwner({ id: 1n })
 
 // Write functions with private key (full runtime)
-const result = await nftContract.write.transfer({
+const result = await bnsV2.write.transfer({
   id: 1n,
-  sender: 'SP...',
+  owner: 'SP...',
   recipient: 'SP...'
 }, {
   senderKey: 'your-private-key',
@@ -168,15 +213,15 @@ const result = await nftContract.write.transfer({
 
 ```typescript
 // Read-only hooks
-const { data: balance, isLoading } = useNftContractGetBalance('SP...')
-const { data: owner } = useNftContractGetOwner(1n)
+const { data: owner, isLoading } = useBnsV2GetOwner(1n)
+const { data: tokenUri } = useBnsV2GetTokenUri(1n)
 
 // Write hooks with micro-stacks API
-const { transfer, isRequestPending } = useNftContractTransfer()
+const { transfer, isRequestPending } = useBnsV2Transfer()
 
 await transfer({
   id: 1n,
-  sender: 'SP...',
+  owner: 'SP...',
   recipient: 'SP...'
 }, {
   postConditions: [...],
@@ -237,21 +282,21 @@ export default defineConfig({
   contracts: [
     // Deployed contract
     {
-      address: 'SP2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9.nft-contract'
+      address: 'SP2QEZ06AGJ3RKJPBV14SY1V5BBFNAW33D96YPGZF.BNS-V2'
     },
     
     // Multi-network contract
     {
       address: {
-        mainnet: 'SP2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9.dao',
-        testnet: 'ST2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9.dao-test'
+        mainnet: 'SP2QEZ06AGJ3RKJPBV14SY1V5BBFNAW33D96YPGZF.BNS-V2',
+        testnet: 'ST2QEZ06AGJ3RKJPBV14SY1V5BBFNAW33D96YPGZF.BNS-V2-TEST'
       },
-      name: 'daoContract'
+      name: 'bnsContract'
     },
     
     // Local Clarity file
     {
-      source: './contracts/token.clar',
+      source: './contracts/my-token.clar',
       name: 'tokenContract'
     }
   ]
@@ -310,6 +355,8 @@ function App() {
 ## API Reference
 
 ### Commands
+
+> **Note:** Replace `npx stacks` with `stacks` if you used `bun link` for global installation.
 
 - `npx stacks init` - Create configuration file
 - `npx stacks generate` - Generate interfaces and hooks
