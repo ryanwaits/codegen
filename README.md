@@ -91,8 +91,6 @@ bun link @stacks/codegen
 ```
 ## Setup
 
-### `codegen init`
-
 To create a `stacks.config.ts` file, run `codegen init` in your project:
 
 ```bash
