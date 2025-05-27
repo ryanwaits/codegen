@@ -4,7 +4,7 @@
   "description": "CLI tool for generating type-safe Stacks contract interfaces",
   "type": "module",
   "bin": {
-    "stacks": "./dist/cli.js"
+    "codegen": "./dist/cli.js"
   },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

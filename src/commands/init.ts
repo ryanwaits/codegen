@@ -66,7 +66,7 @@ export async function init() {
   console.log(chalk.green("✅ Created stacks.config.ts"));
   console.log("\nNext steps:");
   console.log("  1. Edit stacks.config.ts to add your contracts");
-  console.log('  2. Run "stacks generate" to generate TypeScript interfaces');
+  console.log('  2. Run "codegen generate" to generate TypeScript interfaces');
   console.log(
     '  3. For React hooks, set runtime: "full" and configure hooks options'
   );
