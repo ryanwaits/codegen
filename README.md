@@ -4,25 +4,24 @@ Generate type-safe functions, hooks and interfaces for Clarity smart contracts w
 
 ## Usage
 
-### 1. Contract Interface
-```typescript
-const mega = {
-  // Direct function calls - returns contract call params
-  callback(sender: string, memo: string) {
-    return {
-      contractAddress: '...',
-      contractName: '...',
-      functionName: 'callback',
-      functionArgs: [Cl.standardPrincipal(sender), Cl.bufferFromAscii(memo)]
-    }
-  }
-}
+```bash
+codegen init
+codegen generate
+✔ Configuration loaded
+✔ Resolved 2 contracts
+✔ Generated contracts at `./generated/contracts.ts`
+```
 
-// Use with `@stacks/transactions`
-const callbackParams = mega.callback("SP...", "Hello")
+### 1. Utilize the contract interface for type-safe parameters
+```typescript
+// Usage with `@stacks/transactions`
+import { mega } from './generated/contracts'
+import { makeContractCall } from '@stacks/transactions'
+
+const callbackParams = mega.callback('SP...', 'Hello world')
 await makeContractCall({
   ...params,
-  network: 'mainnet'
+  network: 'mainnet',
 })
 
 const getBalanceParams = mega.getBalance()
@@ -32,13 +31,21 @@ await fetchCallReadOnlyFunction({
 })
 ```
 
-### 2. Built-in Read/Write Helpers
+### 2. Use built-in read/write helpers for convenience
 ```typescript
-// Read helpers - returns Promise<result>
-const balance = await mega.read.getBalance("SP...")
+// Read helpers
+const balance = await mega.read.getBalance() // {type: 'uint', value: 42000000n}
 
-// Write helpers - returns Promise<result>
-const result = await mega.write.transfer(100n, "SP...")
+// Write helpers
+const result = await mega.write.transfer(
+  {
+    amount: 10000n,
+    recipient: "SP3D6PV2ACBPEKYJTCMH7HEN02KP87QSP8KTEH335",
+  },
+  {
+    senderKey: "b244296d5907de9864c0b0d51f98a13c52890be0404e83f273144cd5b9960eed01",
+  }
+);
 ```
 
 ### 3. React Integration
@@ -83,7 +90,7 @@ bun link @stacks/codegen
 ```
 ## Configuration
 
-### `stacks init`
+### `codegen init`
 
 Creates a `stacks.config.ts` file
 
@@ -116,7 +123,7 @@ export default defineConfig({
 })
 ```
 
-### `stacks generate`
+### `codegen generate`
 
 This generates your code to the path set in your `stacks.config.ts` file.
 
