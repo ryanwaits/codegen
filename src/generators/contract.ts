@@ -167,6 +167,7 @@ function getTypeForArg(arg: any): string {
       case "bool":
         return "boolean";
       case "principal":
+      case "trait_reference":
         return "string";
       default:
         return "any";
@@ -195,7 +196,8 @@ function getTypeForArg(arg: any): string {
   if (type.tuple) {
     const fields = type.tuple
       .map(
-        (field: any) => `${field.name}: ${getTypeForArg({ type: field.type })}`
+        (field: any) =>
+          `${toCamelCase(field.name)}: ${getTypeForArg({ type: field.type })}`
       )
       .join("; ");
     return `{ ${fields} }`;
@@ -229,6 +231,7 @@ function generateClarityConversion(argName: string, argType: any): string {
       case "bool":
         return `Cl.bool(${argName})`;
       case "principal":
+      case "trait_reference":
         return `(() => {
           const value = ${argName};
           if (!validateStacksAddress(value.split('.')[0])) {
@@ -309,11 +312,12 @@ function generateClarityConversion(argName: string, argType: any): string {
   if (type.tuple) {
     const fields = type.tuple
       .map((field: any) => {
+        const camelFieldName = toCamelCase(field.name);
         const fieldConversion = generateClarityConversion(
-          `${argName}.${field.name}`,
+          `${argName}.${camelFieldName}`,
           { type: field.type }
         );
-        return `${field.name}: ${fieldConversion}`;
+        return `"${field.name}": ${fieldConversion}`;
       })
       .join(", ");
     return `Cl.tuple({ ${fields} })`;
