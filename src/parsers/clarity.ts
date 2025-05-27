@@ -83,6 +83,8 @@ function parseType(typeStr: string): ClarityType | null {
       return "bool";
     case "principal":
       return "principal";
+    case "trait_reference":
+      return "principal";
     default:
       // Handle complex types (simplified)
       if (typeStr.startsWith("string-ascii")) {
@@ -132,7 +134,7 @@ export function parseApiResponse(apiResponse: any): ClarityContract {
 
         functions.push({
           name: func.name,
-          access: access as any,
+          access: access,
           args: func.args.map((arg: any) => ({
             name: arg.name,
             type: convertApiType(arg.type),
@@ -150,6 +152,9 @@ export function parseApiResponse(apiResponse: any): ClarityContract {
 
 function convertApiType(apiType: any): ClarityType {
   if (typeof apiType === "string") {
+    if (apiType === "trait_reference") {
+      return "trait_reference";
+    }
     return parseType(apiType) || "uint128";
   }
 
