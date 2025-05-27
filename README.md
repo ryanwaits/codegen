@@ -19,7 +19,10 @@ import { mega } from './generated/contracts'
 import { makeContractCall } from '@stacks/transactions'
 
 await makeContractCall({
-  ...mega.callback('SP...', 'Hello world'),
+  ...mega.callback({
+    sender: "SPKPXQ0X3A4D1KZ4XTP1GABJX1N36VW10D02TK9X",
+    memo: "Hello world",
+  }),
   network: 'mainnet',
 })
 
