@@ -89,44 +89,36 @@ bun link
 cd /path/to/your/project
 bun link @stacks/codegen
 ```
-## Configuration
+## Setup
 
 ### `codegen init`
 
-Creates a `stacks.config.ts` file
+To create a `stacks.config.ts` file, run `codegen init` in your project:
+
+```bash
+codegen init
+```
 
 ```typescript
 // stacks.config.ts
 import { defineConfig } from '@stacks/codegen'
 
 export default defineConfig({
-  contracts: [
-    // Deployed contract
-    {
-      address: 'SP2QEZ06AGJ3RKJPBV14SY1V5BBFNAW33D96YPGZF.BNS-V2'
-    },
-    
-    // Local Clarity file
-    {
-      source: './contracts/my-token.clar',
-      name: 'tokenContract'
-    }
-  ],
+  contracts: [{ address: 'SP2QEZ06AGJ3RKJPBV14SY1V5BBFNAW33D96YPGZF.BNS-V2' }],
   output: {
     path: './src/generated/contracts.ts',
-    runtime: 'full', // Required for React hooks
-    hooks: {
-      enabled: true,
-      contracts: './src/generated/hooks.ts',
-      stacks: './src/generated/stacks.ts'
-    }
+    runtime: 'minimal',
   }
 })
 ```
 
-### `codegen generate`
+Once you have added your contracts, you can run `codegen generate` to fetch the ABI and generate your functions.
 
-This generates your code to the path set in your `stacks.config.ts` file.
+```bash
+codegen generate
+```
+
+You can find them at the location you configured in your `stacks.config.ts` file.
 
 ## Future Enhancements
 
@@ -172,4 +164,4 @@ export default defineConfig({
 
 ## License
 
-MIT 
+MIT
