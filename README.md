@@ -2,8 +2,6 @@
 
 Generate type-safe functions, hooks and interfaces for Clarity smart contracts with automatic type conversion and React integration.
 
-## Usage
-
 ```bash
 codegen init
 codegen generate
@@ -11,6 +9,8 @@ codegen generate
 ✔ Resolved 2 contracts
 ✔ Generated contracts at `./generated/contracts.ts`
 ```
+
+## Usage
 
 ### 1. Utilize the contract interface for type-safe parameters
 ```typescript
