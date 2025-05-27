@@ -7,7 +7,6 @@ export { defineConfig } from "./utils/config.js";
 export type {
   StacksConfig,
   ContractSource,
-  OutputConfig,
   NetworkName,
 } from "./types/config.js";
 
@@ -18,3 +17,22 @@ export type {
   ContractCallParams,
   ReadOnlyCallParams,
 } from "clarity-abitype";
+
+// Plugin system exports
+export type {
+  StacksCodegenPlugin,
+  PluginFactory,
+  PluginOptions,
+  UserConfig,
+  ResolvedConfig,
+  GenerateContext,
+  PluginContext,
+  Logger,
+  PluginUtils,
+  GeneratedOutput,
+  ProcessedContract,
+  ContractConfig,
+  OutputType,
+} from "./types/plugin.js";
+
+export { PluginManager } from "./core/plugin-manager.js";

@@ -17,12 +17,7 @@ describe("Contract Generator", () => {
             { name: "sender", type: "principal" },
             { name: "recipient", type: "principal" },
           ],
-          outputs: {
-            response: {
-              ok: "bool",
-              error: "uint128",
-            },
-          },
+          outputs: { response: { ok: "bool", error: "uint128" } },
         },
         {
           name: "get-balance",
@@ -34,6 +29,17 @@ describe("Contract Generator", () => {
           name: "get-info",
           access: "read-only",
           args: [],
+          outputs: {
+            tuple: [
+              { name: "total-supply", type: "uint128" },
+              { name: "name", type: { "string-ascii": 32 } },
+            ],
+          },
+        },
+        {
+          name: "internal-function",
+          access: "private",
+          args: [],
           outputs: "bool",
         },
       ],
@@ -41,20 +47,17 @@ describe("Contract Generator", () => {
     source: "api",
   };
 
-  describe("Minimal Runtime", () => {
-    it("should generate a simple contract interface", async () => {
-      const code = await generateContractInterface([sampleContract], "minimal");
+  describe("Basic Contract Generation", () => {
+    it("should generate a contract interface with type-safe methods", async () => {
+      const code = await generateContractInterface([sampleContract]);
 
-      // Check imports for minimal runtime
+      // Check imports
       expect(code).toContain(
         "import type { ContractCallParams, ReadOnlyCallParams } from 'clarity-abitype'"
       );
       expect(code).toContain(
         "import { Cl, validateStacksAddress } from '@stacks/transactions'"
       );
-      expect(code).not.toContain("fetchCallReadOnlyFunction");
-      expect(code).not.toContain("makeContractCall");
-      expect(code).not.toContain("openContractCall");
 
       // Check contract generation
       expect(code).toContain("export const testContract");
@@ -68,139 +71,161 @@ describe("Contract Generator", () => {
       expect(code).toContain("getBalance(");
       expect(code).toContain("getInfo()");
 
-      // Should not contain helper functions
-      expect(code).not.toContain("read:");
-      expect(code).not.toContain("write:");
-      expect(code).not.toContain("fetchTransfer");
-    });
-  });
+      // Should not include private functions
+      expect(code).not.toContain("internalFunction");
 
-  describe("Full Runtime", () => {
-    it("should generate contract interface with helper functions", async () => {
-      const code = await generateContractInterface([sampleContract], "full");
-
-      // Check imports for full runtime
-      expect(code).toContain(
-        "import type { ContractCallParams, ReadOnlyCallParams } from 'clarity-abitype'"
-      );
-      expect(code).toContain(
-        "import { Cl, validateStacksAddress } from '@stacks/transactions'"
-      );
-      expect(code).toContain("fetchCallReadOnlyFunction, makeContractCall");
-      expect(code).toContain("openContractCall");
-
-      // Check basic contract structure
-      expect(code).toContain("export const testContract");
-      expect(code).toContain("transfer(");
-      expect(code).toContain("getBalance(");
-
-      // Check helper functions are generated
-      expect(code).toContain("read:");
-      expect(code).toContain("write:");
-      expect(code).toContain("fetchTransfer");
+      // Should generate ABI constant
+      expect(code).toContain("export const testContractAbi");
     });
 
-    it("should generate read helpers for read-only functions", async () => {
-      const code = await generateContractInterface([sampleContract], "full");
+    it("should handle contracts with no arguments", async () => {
+      const noArgsContract: ResolvedContract = {
+        name: "simpleContract",
+        address: "SP123",
+        contractName: "simple",
+        abi: {
+          functions: [
+            {
+              name: "get-total",
+              access: "read-only",
+              args: [],
+              outputs: "uint128",
+            },
+          ],
+        },
+        source: "api",
+      };
 
-      // Check read helpers structure
-      expect(code).toContain("read: {");
-      expect(code).toContain("async getBalance(");
-      expect(code).toContain("async getInfo(");
+      const code = await generateContractInterface([noArgsContract]);
 
-      // Check read helper function signatures
-      expect(code).toContain("args: { account: string }");
-      expect(code).toContain("options?: {");
-      expect(code).toContain("network?: 'mainnet' | 'testnet' | 'devnet'");
-      expect(code).toContain("senderAddress?: string");
-
-      // Check read helper implementation
-      expect(code).toContain("fetchCallReadOnlyFunction({");
-      expect(code).toContain(
-        "contractAddress: 'SP2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9'"
-      );
-      expect(code).toContain("contractName: 'test-contract'");
-      expect(code).toContain("functionName: 'get-balance'");
-      // Check for smart principal detection logic
-      expect(code).toContain("validateStacksAddress(");
-      expect(code).toContain("value.includes('.')");
-      expect(code).toContain(
-        "const [address, contractName] = value.split('.');"
-      );
-      expect(code).toContain("Cl.contractPrincipal(address, contractName);");
-      expect(code).toContain("Cl.standardPrincipal(value);");
-
-      // Check no-args function
-      expect(code).toContain("functionName: 'get-info'");
+      expect(code).toContain("getTotal() {");
       expect(code).toContain("functionArgs: []");
     });
 
-    it("should generate write helpers for public functions", async () => {
-      const code = await generateContractInterface([sampleContract], "full");
+    it("should handle single argument functions with flexible syntax", async () => {
+      const singleArgContract: ResolvedContract = {
+        name: "singleArgContract",
+        address: "SP123",
+        contractName: "single-arg",
+        abi: {
+          functions: [
+            {
+              name: "get-user-balance",
+              access: "read-only",
+              args: [{ name: "user", type: "principal" }],
+              outputs: "uint128",
+            },
+          ],
+        },
+        source: "api",
+      };
 
-      // Check write helpers structure
-      expect(code).toContain("write: {");
-      expect(code).toContain("async transfer(");
+      const code = await generateContractInterface([singleArgContract]);
 
-      // Check write helper function signature
-      expect(code).toContain(
-        "args: { amount: bigint; sender: string; recipient: string }"
-      );
-      expect(code).toContain("options: {");
-      expect(code).toContain("senderKey: string");
-      expect(code).toContain("network?: 'mainnet' | 'testnet' | 'devnet'");
-      expect(code).toContain("fee?: string | number | undefined");
-      expect(code).toContain("nonce?: bigint");
-      expect(code).toContain("anchorMode?: 1 | 2 | 3");
-      expect(code).toContain("postConditions?: any[]");
-      expect(code).toContain("validateWithAbi?: boolean");
-
-      // Check write helper implementation
-      expect(code).toContain("makeContractCall({");
-      expect(code).toContain("functionName: 'transfer'");
-      expect(code).toContain("Cl.uint(args.amount)");
-      // Check for smart principal detection logic instead of hardcoded values
-      expect(code).toContain("validateStacksAddress(");
-      expect(code).toContain("value.includes('.')");
-      expect(code).toContain(
-        "const [address, contractName] = value.split('.');"
-      );
-      expect(code).toContain("Cl.contractPrincipal(address, contractName);");
-      expect(code).toContain("Cl.standardPrincipal(value);");
-      expect(code).toContain("validateWithAbi: true");
+      // Should support both object and direct argument syntax
+      expect(code).toContain("getUserBalance(...args:");
+      expect(code).toContain("[{ user: string }] | [string]");
     });
 
-    it("should generate fetch helpers for public functions", async () => {
-      const code = await generateContractInterface([sampleContract], "full");
+    it("should handle multiple contracts", async () => {
+      const contract2: ResolvedContract = {
+        name: "secondContract",
+        address: "SP456",
+        contractName: "second-contract",
+        abi: {
+          functions: [
+            {
+              name: "mint",
+              access: "public",
+              args: [{ name: "amount", type: "uint128" }],
+              outputs: { response: { ok: "bool", error: "uint128" } },
+            },
+          ],
+        },
+        source: "api",
+      };
 
-      // Check fetch helpers
-      expect(code).toContain("async fetchTransfer(");
+      const code = await generateContractInterface([sampleContract, contract2]);
 
-      // Check fetch helper function signature
+      expect(code).toContain("export const testContract");
+      expect(code).toContain("export const secondContract");
+      expect(code).toContain("export const testContractAbi");
+      expect(code).toContain("export const secondContractAbi");
+    });
+  });
+
+  describe("Type Conversion", () => {
+    it("should generate correct TypeScript types for Clarity types", async () => {
+      const typesContract: ResolvedContract = {
+        name: "typesContract",
+        address: "SP123",
+        contractName: "types",
+        abi: {
+          functions: [
+            {
+              name: "test-types",
+              access: "public",
+              args: [
+                { name: "uint-val", type: "uint128" },
+                { name: "int-val", type: "int128" },
+                { name: "bool-val", type: "bool" },
+                { name: "principal-val", type: "principal" },
+                { name: "ascii-val", type: { "string-ascii": 32 } },
+                { name: "utf8-val", type: { "string-utf8": 32 } },
+                { name: "buffer-val", type: { buff: 32 } },
+              ],
+              outputs: "bool",
+            },
+          ],
+        },
+        source: "api",
+      };
+
+      const code = await generateContractInterface([typesContract]);
+
+      expect(code).toContain("uintVal: bigint");
+      expect(code).toContain("intVal: bigint");
+      expect(code).toContain("boolVal: boolean");
+      expect(code).toContain("principalVal: string");
+      expect(code).toContain("asciiVal: string");
+      expect(code).toContain("utf8Val: string");
       expect(code).toContain(
-        "args: { amount: bigint; sender: string; recipient: string }"
+        "bufferVal: Uint8Array | string | { type: 'ascii' | 'utf8' | 'hex'; value: string }"
       );
-      expect(code).toContain("options?: {");
-      expect(code).toContain("onFinish?: (data: any) => void");
-      expect(code).toContain("onCancel?: () => void");
-      expect(code).toContain("fee?: string | number | undefined");
-      expect(code).toContain("anchorMode?: 1 | 2 | 3");
-      expect(code).toContain("postConditions?: any[]");
-
-      // Check fetch helper implementation
-      expect(code).toContain("openContractCall({");
-      expect(code).toContain("functionName: 'transfer'");
-      expect(code).toContain("Cl.uint(args.amount)");
-      // Check for smart principal detection logic instead of hardcoded values
-      expect(code).toContain("validateStacksAddress(");
-      expect(code).toContain("value.includes('.')");
-      expect(code).toContain(
-        "const [address, contractName] = value.split('.');"
-      );
-      expect(code).toContain("Cl.contractPrincipal(address, contractName);");
-      expect(code).toContain("Cl.standardPrincipal(value);");
     });
 
+    it("should handle optional and list types", async () => {
+      const complexTypesContract: ResolvedContract = {
+        name: "complexContract",
+        address: "SP123",
+        contractName: "complex",
+        abi: {
+          functions: [
+            {
+              name: "complex-function",
+              access: "public",
+              args: [
+                { name: "optional-val", type: { optional: "uint128" } },
+                {
+                  name: "list-val",
+                  type: { list: { type: "uint128", length: 10 } },
+                },
+              ],
+              outputs: "bool",
+            },
+          ],
+        },
+        source: "api",
+      };
+
+      const code = await generateContractInterface([complexTypesContract]);
+
+      expect(code).toContain("optionalVal: bigint | null");
+      expect(code).toContain("listVal: bigint[]");
+    });
+  });
+
+  describe("Edge Cases", () => {
     it("should handle contracts with only read-only functions", async () => {
       const readOnlyContract: ResolvedContract = {
         name: "readOnlyContract",
@@ -219,15 +244,10 @@ describe("Contract Generator", () => {
         source: "api",
       };
 
-      const code = await generateContractInterface([readOnlyContract], "full");
+      const code = await generateContractInterface([readOnlyContract]);
 
-      // Should have read helpers
-      expect(code).toContain("read: {");
-      expect(code).toContain("async getData(");
-
-      // Should not have write or fetch helpers
-      expect(code).not.toContain("write: {");
-      expect(code).not.toContain("fetchGetData");
+      expect(code).toContain("getData(");
+      expect(code).toContain("export const readOnlyContract");
     });
 
     it("should handle contracts with only public functions", async () => {
@@ -248,173 +268,131 @@ describe("Contract Generator", () => {
         source: "api",
       };
 
-      const code = await generateContractInterface([writeOnlyContract], "full");
+      const code = await generateContractInterface([writeOnlyContract]);
 
-      // Should have write and fetch helpers
-      expect(code).toContain("write: {");
-      expect(code).toContain("async setData(");
-      expect(code).toContain("async fetchSetData(");
-
-      // Should not have read helpers
-      expect(code).not.toContain("read: {");
+      expect(code).toContain("setData(");
+      expect(code).toContain("export const writeOnlyContract");
     });
 
-    it("should include TODO comments for future enhancements", async () => {
-      const code = await generateContractInterface([sampleContract], "full");
-
-      // Check for TODO comments
-      expect(code).toContain("// TODO: Add proper PostCondition types");
-      expect(code).toContain("// TODO: Add error handling and retry logic");
-      expect(code).toContain(
-        "// TODO: Add error handling for wallet connection"
-      );
-    });
-  });
-
-  describe("Legacy Tests", () => {
-    it("should handle contracts with no arguments", async () => {
-      const contracts: ResolvedContract[] = [
-        {
-          name: "simpleContract",
-          address: "SP123",
-          contractName: "simple",
-          abi: {
-            functions: [
-              {
-                name: "get-info",
-                access: "read-only",
-                args: [],
-                outputs: "bool",
-              },
-            ],
-          },
-          source: "api",
+    it("should handle empty contracts", async () => {
+      const emptyContract: ResolvedContract = {
+        name: "emptyContract",
+        address: "SP123",
+        contractName: "empty",
+        abi: {
+          functions: [],
         },
-      ];
+        source: "api",
+      };
 
-      const code = await generateContractInterface(contracts);
+      const code = await generateContractInterface([emptyContract]);
 
-      expect(code).toContain("getInfo()");
-      expect(code).toContain("functionArgs: []");
+      expect(code).toContain("export const emptyContract");
+      expect(code).toContain("export const emptyContractAbi");
     });
 
-    it("should convert kebab-case to camelCase", async () => {
-      const contracts: ResolvedContract[] = [
-        {
-          name: "kebabContract",
-          address: "SP123",
-          contractName: "kebab",
-          abi: {
-            functions: [
-              {
-                name: "get-token-uri",
-                access: "read-only",
-                args: [{ name: "token-id", type: "uint128" }],
-                outputs: { "string-ascii": { length: 256 } },
-              },
-            ],
-          },
-          source: "api",
-        },
-      ];
-
-      const code = await generateContractInterface(contracts);
-
-      expect(code).toContain("getTokenUri");
-      expect(code).not.toContain("get-token-uri(");
-    });
-
-    it("should generate proper ABI constant", async () => {
-      const contracts: ResolvedContract[] = [
-        {
-          name: "testContract",
-          address: "SP123",
-          contractName: "test",
-          abi: {
-            functions: [
-              {
-                name: "simple-func",
-                access: "public",
-                args: [],
-                outputs: "bool",
-              },
-            ],
-          },
-          source: "api",
-        },
-      ];
-
-      const code = await generateContractInterface(contracts);
-
-      // Check ABI constant generation
-      expect(code).toContain("const testContractAbi = {");
-      expect(code).toContain("} as const");
-      expect(code).toContain("name: 'simple-func'");
-      expect(code).toContain("access: 'public'");
-    });
-
-    it("should generate multi-network contracts with proper naming", async () => {
-      const contracts: ResolvedContract[] = [
-        {
-          name: "daoContract",
-          address: "SP2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9",
-          contractName: "dao",
-          abi: {
-            functions: [
-              {
-                name: "vote",
-                access: "public",
-                args: [
-                  { name: "proposal-id", type: "uint128" },
-                  { name: "support", type: "bool" },
-                ],
-                outputs: {
-                  response: {
-                    ok: "bool",
-                    error: "uint128",
-                  },
+    it("should sanitize function names with hyphens and numbers", async () => {
+      const hyphenContract: ResolvedContract = {
+        name: "hyphenContract",
+        address: "SP123",
+        contractName: "hyphen-test",
+        abi: {
+          functions: [
+            {
+              name: "test-function-1",
+              access: "public",
+              args: [],
+              outputs: "bool",
+            },
+            {
+              name: "testListOf-10",
+              access: "read-only",
+              args: [
+                {
+                  name: "input",
+                  type: { list: { type: "uint128", length: 10 } },
                 },
-              },
-            ],
-          },
-          source: "api",
+              ],
+              outputs: "bool",
+            },
+            {
+              name: "get-user-DATA",
+              access: "read-only",
+              args: [],
+              outputs: "uint128",
+            },
+            {
+              name: "test-",
+              access: "read-only",
+              args: [],
+              outputs: "bool",
+            },
+          ],
         },
-        {
-          name: "testnetDaoContract",
-          address: "ST2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9",
-          contractName: "dao-test",
-          abi: {
-            functions: [
-              {
-                name: "vote",
-                access: "public",
-                args: [
-                  { name: "proposal-id", type: "uint128" },
-                  { name: "support", type: "bool" },
-                ],
-                outputs: {
-                  response: {
-                    ok: "bool",
-                    error: "uint128",
-                  },
-                },
-              },
-            ],
-          },
-          source: "api",
+        source: "api",
+      };
+
+      const code = await generateContractInterface([hyphenContract]);
+
+      // Function names should be converted to valid JavaScript identifiers
+      expect(code).toContain("testFunction1("); // test-function-1 -> testFunction1
+      expect(code).toContain("testListOf10("); // testListOf-10 -> testListOf10
+      expect(code).toContain("getUserDATA("); // get-user-DATA -> getUserDATA
+      expect(code).toContain("test("); // test- -> test
+
+      // Should not contain any hyphens in method names
+      expect(code).not.toMatch(/\w+-\w+\s*\(/); // No hyphenated method names
+    });
+
+    it("should sanitize contract names with hyphens to camelCase", async () => {
+      const hyphenatedNameContract: ResolvedContract = {
+        name: "createRandom", // This should be camelCase
+        address: "SP123",
+        contractName: "create-random",
+        abi: {
+          functions: [
+            {
+              name: "get-random",
+              access: "read-only",
+              args: [],
+              outputs: "uint128",
+            },
+          ],
         },
-      ];
+        source: "api",
+      };
 
-      const code = await generateContractInterface(contracts);
+      const getTenureContract: ResolvedContract = {
+        name: "getTenureForBlock", // This should be camelCase
+        address: "SP456",
+        contractName: "get-tenure-for-block",
+        abi: {
+          functions: [
+            {
+              name: "get-tenure",
+              access: "read-only",
+              args: [],
+              outputs: "uint128",
+            },
+          ],
+        },
+        source: "api",
+      };
 
-      // Should generate both contracts
-      expect(code).toContain("export const daoContract");
-      expect(code).toContain("export const testnetDaoContract");
+      const code = await generateContractInterface([
+        hyphenatedNameContract,
+        getTenureContract,
+      ]);
 
-      // Check that both have the same method but different addresses
-      expect(code).toContain("vote(...args:");
-      expect(code).toContain("SP2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9");
-      expect(code).toContain("ST2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9");
+      // Contract exports should use camelCase names
+      expect(code).toContain("export const createRandom =");
+      expect(code).toContain("export const createRandomAbi =");
+      expect(code).toContain("export const getTenureForBlock =");
+      expect(code).toContain("export const getTenureForBlockAbi =");
+
+      // Should not contain underscores in export names
+      expect(code).not.toContain("create_random");
+      expect(code).not.toContain("get_tenure_for_block");
     });
   });
 });

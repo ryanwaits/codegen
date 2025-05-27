@@ -4,6 +4,8 @@ import { pathToFileURL } from "url";
 import { createRequire } from "module";
 import { transformSync } from "esbuild";
 import type { StacksConfig, ConfigDefiner } from "../types/config.js";
+import type { ResolvedConfig } from "../types/plugin.js";
+import { PluginManager } from "../core/plugin-manager.js";
 
 /**
  * Config file utilities
@@ -28,7 +30,7 @@ export async function findConfigFile(cwd: string): Promise<string | null> {
   return null;
 }
 
-export async function loadConfig(configPath?: string): Promise<StacksConfig> {
+export async function loadConfig(configPath?: string): Promise<ResolvedConfig> {
   const cwd = process.cwd();
 
   const resolvedPath = configPath
@@ -100,7 +102,19 @@ export async function loadConfig(configPath?: string): Promise<StacksConfig> {
 
   validateConfig(config);
 
-  return config;
+  // Process plugins if they exist
+  const pluginManager = new PluginManager();
+
+  if (config.plugins && Array.isArray(config.plugins)) {
+    for (const plugin of config.plugins) {
+      pluginManager.register(plugin);
+    }
+  }
+
+  // Transform config through plugins
+  const resolvedConfig = await pluginManager.transformConfig(config);
+
+  return resolvedConfig;
 }
 
 export function validateConfig(
@@ -112,22 +126,27 @@ export function validateConfig(
 
   const c = config as any;
 
-  if (!Array.isArray(c.contracts) || c.contracts.length === 0) {
-    throw new Error("Config must have at least one contract");
+  // Contracts are optional now since plugins can provide them
+  if (c.contracts && !Array.isArray(c.contracts)) {
+    throw new Error("Config contracts must be an array");
   }
 
-  if (!c.output || typeof c.output !== "object") {
-    throw new Error("Config must have an output configuration");
+  if (!c.out || typeof c.out !== "string") {
+    throw new Error("Config out must be a string path");
   }
 
-  if (!c.output.path || typeof c.output.path !== "string") {
-    throw new Error("Config output must have a path");
-  }
-
-  for (const contract of c.contracts) {
-    if (!contract.address && !contract.source) {
-      throw new Error("Each contract must have either an address or source");
+  // Validate contracts if they exist
+  if (c.contracts) {
+    for (const contract of c.contracts) {
+      if (!contract.address && !contract.source) {
+        throw new Error("Each contract must have either an address or source");
+      }
     }
+  }
+
+  // Validate plugins if they exist
+  if (c.plugins && !Array.isArray(c.plugins)) {
+    throw new Error("Config plugins must be an array");
   }
 }
 

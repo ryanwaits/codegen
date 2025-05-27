@@ -6,18 +6,17 @@ import { loadConfig } from "../utils/config.js";
 import { StacksApiClient } from "../utils/api.js";
 import { parseClarityFile, parseApiResponse } from "../parsers/clarity.js";
 import { generateContractInterface } from "../generators/contract.js";
-import {
-  generateContractHooks,
-  generateGenericHooks,
-} from "../generators/hooks.js";
-import { generateReactProvider } from "../generators/react-provider.js";
-import { generateStacksApiUtils } from "../generators/stacks-api-generator.js";
-import { ensureHooksDependencies } from "../utils/dependencies.js";
+import { PluginManager } from "../core/plugin-manager.js";
 import type {
   ResolvedContract,
   NetworkName,
   ContractSource,
 } from "../types/config.js";
+import type {
+  ResolvedConfig,
+  ProcessedContract,
+  ContractConfig,
+} from "../types/plugin.js";
 
 /**
  * Generate command implementation
@@ -29,162 +28,111 @@ export interface GenerateOptions {
 }
 
 export async function generate(options: GenerateOptions) {
-  const spinner = ora("Loading configuration").start();
+  const spinner = ora("Processing contracts").start();
 
   try {
     const config = await loadConfig(options.config);
-    spinner.succeed("Configuration loaded");
 
-    spinner.start("Resolving contracts");
-    const resolvedContracts: ResolvedContract[] = [];
+    // Get plugin manager from config loading
+    const pluginManager = new PluginManager();
 
-    for (const contract of config.contracts) {
-      try {
-        const resolved = await resolveContracts(
-          contract,
-          config.network,
-          config.apiKey,
-          config.apiUrl
-        );
-        resolvedContracts.push(...resolved);
-        const contractNames = resolved.map((r) => r.name).join(", ");
-        spinner.text = `Resolved ${contractNames}`;
-      } catch (error: any) {
-        spinner.fail(`Failed to resolve contract: ${error.message}`);
-        throw error;
+    // Register plugins from config
+    if (config.plugins) {
+      for (const plugin of config.plugins) {
+        pluginManager.register(plugin);
       }
     }
 
-    spinner.succeed(`Resolved ${resolvedContracts.length} contracts`);
+    // Execute configResolved hooks
+    await pluginManager.executeHook("configResolved", config);
 
-    spinner.start("Generating TypeScript code");
-    const code = await generateContractInterface(
-      resolvedContracts,
-      config.output.runtime || "minimal"
+    // Convert existing contracts to ContractConfig format (if any)
+    // Use the resolved config which includes contracts added by plugins
+    const contractConfigs: ContractConfig[] = (config.contracts || []).map(
+      (contract) => ({
+        name: contract.name,
+        address: contract.address,
+        source: contract.source,
+        abi: (contract as any).abi, // Include ABI if it exists (from plugins)
+        _clarinetSource: (contract as any)._clarinetSource, // Include plugin flags
+      })
     );
 
-    const outputPath = path.resolve(process.cwd(), config.output.path);
-    await fs.mkdir(path.dirname(outputPath), { recursive: true });
+    // Transform contracts through plugins (plugins can add more contracts)
+    const processedContracts = await pluginManager.transformContracts(
+      contractConfigs,
+      config
+    );
 
-    await fs.writeFile(outputPath, code);
-    spinner.succeed(`Generated ${outputPath}`);
-
-    if (config.output.hooks?.enabled) {
-      await generateHooksFiles(resolvedContracts, config, spinner);
+    if (processedContracts.length === 0) {
+      spinner.warn("No contracts found to generate");
+      console.log("\nTo get started:");
+      console.log("  • Add contracts to your config file, or");
+      console.log("  • Use plugins like clarinet() for local contracts");
+      return;
     }
 
-    console.log(
-      chalk.green("\n✨ Successfully generated contract interfaces!\n")
+    // Execute generation through plugin system
+    const outputs = await pluginManager.executeGeneration(
+      processedContracts,
+      config
     );
 
-    console.log("Import and use your contracts:");
-    console.log(
-      chalk.gray(`  import { contractName } from '${config.output.path}'`)
-    );
+    // If no plugins generated the main contracts output, generate it using the existing generator
+    if (!outputs.has("contracts") && processedContracts.length > 0) {
+      const contractsCode = await generateContractInterface(processedContracts);
+      outputs.set("contracts", {
+        path: config.out,
+        content: contractsCode,
+        type: "contracts",
+      });
+    }
 
-    if (config.output.hooks?.enabled) {
-      console.log("\nGenerated React hooks:");
+    // Transform outputs through plugins
+    const transformedOutputs = await pluginManager.transformOutputs(outputs);
+
+    // Write all outputs to disk
+    await pluginManager.writeOutputs(transformedOutputs);
+
+    const contractCount = processedContracts.length;
+    const contractWord = contractCount === 1 ? "contract" : "contracts";
+    spinner.succeed(`Generation complete for ${contractCount} ${contractWord}`);
+
+    console.log(`\n📄 ${config.out}`);
+    console.log(`\n💡 Import your contracts:`);
+
+    // Show import examples based on actual contract names
+    if (processedContracts.length > 0) {
+      const exampleContract = processedContracts[0];
       console.log(
         chalk.gray(
-          `  import { StacksProvider, StacksQueryProvider } from './src/generated/provider'`
+          `   import { ${exampleContract.name} } from '${config.out.replace(/\.ts$/, "")}'`
         )
       );
-      if (config.output.hooks.contracts) {
+
+      if (processedContracts.length > 1) {
         console.log(
           chalk.gray(
-            `  import { useContractFunction } from '${config.output.hooks.contracts}'`
-          )
-        );
-      }
-      if (config.output.hooks.stacks) {
-        console.log(
-          chalk.gray(
-            `  import { useAccount, useTransaction } from '${config.output.hooks.stacks}'`
+            `   // Also available: ${processedContracts
+              .slice(1)
+              .map((c) => c.name)
+              .join(", ")}`
           )
         );
       }
     }
   } catch (error: any) {
     spinner.fail("Generation failed");
-    console.error(chalk.red(error.message));
+    console.error(chalk.red(`\n${error.message}`));
+    if (process.env.DEBUG) {
+      console.error(error.stack);
+    }
     process.exit(1);
   }
 }
 
-async function generateHooksFiles(
-  resolvedContracts: ResolvedContract[],
-  config: any,
-  spinner: any
-) {
-  const hooksConfig = config.output.hooks;
-
-  // Ensure required dependencies are installed
-  await ensureHooksDependencies(process.cwd());
-
-  // Generate React provider
-  spinner.start("Generating React provider");
-  const providerCode = await generateReactProvider();
-  const providerPath = path.resolve(
-    process.cwd(),
-    "./src/generated/provider.tsx"
-  );
-
-  await fs.mkdir(path.dirname(providerPath), { recursive: true });
-  await fs.writeFile(providerPath, providerCode);
-
-  spinner.succeed(`Generated React provider: ${providerPath}`);
-
-  // Generate Stacks API utilities
-  spinner.start("Generating Stacks API utilities");
-  const stacksApiCode = await generateStacksApiUtils();
-  const stacksApiPath = path.resolve(
-    process.cwd(),
-    "./src/generated/stacks-api.ts"
-  );
-
-  await fs.mkdir(path.dirname(stacksApiPath), { recursive: true });
-  await fs.writeFile(stacksApiPath, stacksApiCode);
-
-  spinner.succeed(`Generated Stacks API utilities: ${stacksApiPath}`);
-
-  // Generate contract-specific hooks
-  if (hooksConfig.contracts) {
-    spinner.start("Generating contract hooks");
-
-    // Only generate hooks if runtime is 'full' (required for utils)
-    if (config.output.runtime !== "full") {
-      spinner.warn(
-        "Hooks require runtime: 'full' - skipping contract hooks generation"
-      );
-    } else {
-      const contractHooksCode = await generateContractHooks(resolvedContracts);
-      const contractHooksPath = path.resolve(
-        process.cwd(),
-        hooksConfig.contracts
-      );
-
-      await fs.mkdir(path.dirname(contractHooksPath), { recursive: true });
-      await fs.writeFile(contractHooksPath, contractHooksCode);
-
-      spinner.succeed(`Generated contract hooks: ${contractHooksPath}`);
-    }
-  }
-
-  // Generate generic Stacks hooks
-  if (hooksConfig.stacks) {
-    spinner.start("Generating generic Stacks hooks");
-
-    const genericHooksCode = await generateGenericHooks(hooksConfig.include);
-    const genericHooksPath = path.resolve(process.cwd(), hooksConfig.stacks);
-
-    await fs.mkdir(path.dirname(genericHooksPath), { recursive: true });
-    await fs.writeFile(genericHooksPath, genericHooksCode);
-
-    spinner.succeed(`Generated generic hooks: ${genericHooksPath}`);
-  }
-}
-
-async function resolveContract(
+// Keep existing contract resolution functions for backward compatibility and plugin use
+export async function resolveContract(
   source: ContractSource,
   network: NetworkName,
   apiKey?: string,
@@ -256,7 +204,7 @@ async function resolveContract(
   throw new Error("Contract must have either address or source");
 }
 
-async function resolveContracts(
+export async function resolveContracts(
   source: ContractSource,
   defaultNetwork: NetworkName | undefined,
   apiKey?: string,

@@ -4,63 +4,46 @@ import type { ResolvedContract } from "../src/types/config";
 
 describe("Buffer Conversion Enhancement", () => {
   const contractWithBuffer: ResolvedContract = {
-    name: "testContract",
-    address: "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM",
-    contractName: "test-contract",
-    source: "local" as const,
+    name: "mega",
+    address: "SP466FNC0P7JWTNM2R9T199QRZN1MYEDTAR0KP27",
+    contractName: "miamicoin-core-v1",
     abi: {
       functions: [
         {
-          name: "store-data",
-          access: "public" as const,
+          name: "callback",
+          access: "public",
           args: [
-            {
-              name: "memo",
-              type: { buff: { length: 256 } },
-            },
+            { name: "sender", type: "principal" },
+            { name: "memo", type: { buff: 34 } },
           ],
-          outputs: { type: "uint128" },
+          outputs: {
+            response: {
+              ok: "bool",
+              error: "uint128",
+            },
+          },
         },
         {
-          name: "callback",
-          access: "public" as const,
+          name: "store-data",
+          access: "public",
           args: [
-            {
-              name: "sender",
-              type: "principal",
-            },
-            {
-              name: "memo",
-              type: { buff: { length: 256 } },
-            },
+            { name: "key", type: { "string-ascii": 32 } },
+            { name: "data", type: { buff: 1024 } },
           ],
-          outputs: { type: "uint128" },
+          outputs: {
+            response: {
+              ok: "bool",
+              error: "uint128",
+            },
+          },
         },
       ],
     },
+    source: "api",
   };
 
-  it("should generate flexible buffer types that accept strings", async () => {
-    const code = await generateContractInterface(
-      [contractWithBuffer],
-      "minimal"
-    );
-
-    // Should generate union types for buffer arguments
-    expect(code).toContain(
-      "Uint8Array | string | { type: 'ascii' | 'utf8' | 'hex'; value: string }"
-    );
-
-    // Should be able to handle object-style and positional arguments
-    expect(code).toContain("memo: Uint8Array | string");
-    expect(code).toContain("sender: string");
-  });
-
   it("should generate flexible buffer conversion code", async () => {
-    const code = await generateContractInterface(
-      [contractWithBuffer],
-      "minimal"
-    );
+    const code = await generateContractInterface([contractWithBuffer]);
 
     // Should generate runtime conversion logic
     expect(code).toContain("value instanceof Uint8Array");
@@ -71,10 +54,7 @@ describe("Buffer Conversion Enhancement", () => {
   });
 
   it("should handle different buffer input formats in generated code", async () => {
-    const code = await generateContractInterface(
-      [contractWithBuffer],
-      "minimal"
-    );
+    const code = await generateContractInterface([contractWithBuffer]);
 
     // Verify the code contains the logic for all supported formats
     expect(code).toContain("case 'ascii':");
@@ -84,10 +64,7 @@ describe("Buffer Conversion Enhancement", () => {
   });
 
   it("should generate contract interface that accepts the flexible buffer types", async () => {
-    const code = await generateContractInterface(
-      [contractWithBuffer],
-      "minimal"
-    );
+    const code = await generateContractInterface([contractWithBuffer]);
 
     // Log the generated code for manual inspection
     console.log("\n=== Generated Contract Interface ===");

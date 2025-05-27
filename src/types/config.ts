@@ -21,55 +21,21 @@ export interface ContractSource {
   name?: string;
 }
 
-export interface HooksConfig {
+export interface StacksConfig {
   /**
-   * Whether to generate React hooks
+   * Contracts to generate interfaces for (optional - plugins can provide these)
    */
-  enabled: boolean;
+  contracts?: ContractSource[];
 
-  /**
-   * Path for contract-specific hooks
-   */
-  contracts?: string;
-
-  /**
-   * Path for generic Stacks hooks
-   */
-  stacks?: string;
-
-  /**
-   * Which generic hooks to include (if not specified, includes all)
-   */
-  include?: string[];
-}
-
-export interface OutputConfig {
   /**
    * Output file path
    */
-  path: string;
+  out: string;
 
   /**
-   * Whether to generate additional runtime helpers
+   * Plugins to use for generation
    */
-  runtime?: "minimal" | "full";
-
-  /**
-   * React hooks configuration
-   */
-  hooks?: HooksConfig;
-}
-
-export interface StacksConfig {
-  /**
-   * Contracts to generate interfaces for
-   */
-  contracts: ContractSource[];
-
-  /**
-   * Output configuration
-   */
-  output: OutputConfig;
+  plugins?: any[]; // Will be properly typed when plugins are imported
 
   /**
    * Network to use for fetching contracts
@@ -85,11 +51,6 @@ export interface StacksConfig {
    * Base URL for Stacks API (optional override)
    */
   apiUrl?: string;
-
-  /**
-   * Whether to use Clarinet.toml if found
-   */
-  clarinet?: boolean | string;
 }
 
 export interface ResolvedContract {

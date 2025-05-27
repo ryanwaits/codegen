@@ -1,73 +1,66 @@
 import { promises as fs } from "fs";
 import path from "path";
 import chalk from "chalk";
+import ora from "ora";
 
 /**
  * Init command - creates a default config file
  */
 
-const DEFAULT_CONFIG = `import { defineConfig } from '@stacks/codegen'
-
-export default defineConfig({
-  contracts: [
-    {
-      // Fetch from deployed contract
-      address: 'SP2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9.nft-nyc',
-      name: 'nftContract' // optional alias
-    },
-    {
-      // Or from local Clarity file
-      source: './contracts/my-contract.clar',
-      name: 'myContract'
-    }
-  ],
-  
-  output: {
-    path: './src/generated/contracts.ts',
-    runtime: 'minimal', // or 'full' for more features
-    
-    // React hooks generation (requires runtime: 'full' for contract hooks)
-    hooks: {
-      enabled: true,
-      contracts: './src/generated/hooks.ts',    // Contract-specific hooks
-      stacks: './src/generated/stacks.ts',      // Generic blockchain hooks
-      include: [                                // Optional: specify which generic hooks to include
-        'useAccount',
-        'useTransaction', 
-        'useBlock',
-        'useAccountTransactions',
-        'useWaitForTransaction'
-      ]
-    }
-  },
-
-  network: 'mainnet', // or 'testnet', 'devnet', 'simnet'
-  
-  // Optional: Add your Hiro API key for higher rate limits
-  // apiKey: process.env.STACKS_API_KEY
-})
-`;
-
 export async function init() {
+  const spinner = ora("Initializing").start();
   const configPath = path.join(process.cwd(), "stacks.config.ts");
 
   // Check if config already exists
   try {
     await fs.access(configPath);
-    console.log(chalk.yellow("⚠️  stacks.config.ts already exists"));
+    spinner.warn("stacks.config.ts already exists");
     return;
   } catch {
     // File doesn't exist, continue
   }
 
-  // Write config file
-  await fs.writeFile(configPath, DEFAULT_CONFIG);
+  // Check for Clarinet project
+  const hasClarinetProject = await fileExists("./Clarinet.toml");
 
-  console.log(chalk.green("✅ Created stacks.config.ts"));
-  console.log("\nNext steps:");
-  console.log("  1. Edit stacks.config.ts to add your contracts");
-  console.log('  2. Run "codegen generate" to generate TypeScript interfaces');
+  let config: string;
+
+  if (hasClarinetProject) {
+    // Generate plugin-based config for Clarinet projects
+    config = `import { defineConfig } from '@stacks/codegen';
+import { clarinet } from '@stacks/codegen/plugins';
+
+export default defineConfig({
+  out: './src/generated/contracts.ts',
+  plugins: [
+    clarinet() // Found Clarinet.toml in current directory
+  ]
+});`;
+  } else {
+    // Generate basic config for non-Clarinet projects
+    config = `import { defineConfig } from '@stacks/codegen';
+
+export default defineConfig({
+  out: './src/generated/contracts.ts',
+  plugins: [],
+});`;
+  }
+
+  // Write config file
+  await fs.writeFile(configPath, config);
+
+  spinner.succeed("Created `stacks.config.ts`");
+
   console.log(
-    '  3. For React hooks, set runtime: "full" and configure hooks options'
+    "\nRun `codegen generate` to generate type-safe interfaces, functions, and hooks!"
   );
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
 }
