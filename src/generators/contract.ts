@@ -217,15 +217,14 @@ function generateClarityConversion(argName: string, argType: any): string {
       case "principal":
       case "trait_reference":
         return `(() => {
-          const value = ${argName};
-          if (!validateStacksAddress(value.split('.')[0])) {
-            throw new Error('Invalid Stacks address format');
+          const [address, contractName] = ${argName}.split(".") as [string, string];
+          if (!validateStacksAddress(address)) {
+            throw new Error("Invalid Stacks address format");
           }
-          if (value.includes('.')) {
-            const [address, contractName] = value.split('.');
+          if (${argName}.includes(".")) {
             return Cl.contractPrincipal(address, contractName);
           } else {
-            return Cl.standardPrincipal(value);
+            return Cl.standardPrincipal(${argName});
           }
         })()`;
       default:
