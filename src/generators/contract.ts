@@ -11,7 +11,7 @@ export async function generateContractInterface(
   runtime: "minimal" | "full" = "minimal"
 ): Promise<string> {
   const baseImports = `import type { ContractCallParams, ReadOnlyCallParams } from 'clarity-abitype'
-import { Cl } from '@stacks/transactions'`;
+import { Cl, validateStacksAddress } from '@stacks/transactions'`;
 
   const fullRuntimeImports =
     runtime === "full"
@@ -37,7 +37,7 @@ import { openContractCall } from '@stacks/connect'`
   const formatted = await format(code, {
     parser: "typescript",
     singleQuote: true,
-    semi: false,
+    semi: true,
     printWidth: 100,
     trailingComma: "es5",
   });
@@ -80,7 +80,7 @@ function generateAbiConstant(name: string, abi: any): string {
     .replace(/"([a-zA-Z_$][a-zA-Z0-9_$]*)":/g, "$1:") // Only remove quotes from valid JS identifiers
     .replace(/"/g, "'"); // Use single quotes
 
-  return `const ${name}Abi = ${abiJson} as const`;
+  return `export const ${name}Abi = ${abiJson} as const`;
 }
 
 function generateMethod(
@@ -178,7 +178,8 @@ function getTypeForArg(arg: any): string {
   }
 
   if (type.buff) {
-    return "Uint8Array";
+    // Support flexible buffer input types
+    return "Uint8Array | string | { type: 'ascii' | 'utf8' | 'hex'; value: string }";
   }
 
   if (type.optional) {
@@ -228,7 +229,18 @@ function generateClarityConversion(argName: string, argType: any): string {
       case "bool":
         return `Cl.bool(${argName})`;
       case "principal":
-        return `Cl.standardPrincipal(${argName})`;
+        return `(() => {
+          const value = ${argName};
+          if (!validateStacksAddress(value.split('.')[0])) {
+            throw new Error('Invalid Stacks address format');
+          }
+          if (value.includes('.')) {
+            const [address, contractName] = value.split('.');
+            return Cl.contractPrincipal(address, contractName);
+          } else {
+            return Cl.standardPrincipal(value);
+          }
+        })()`;
       default:
         return `${argName}`; // fallback for unknown types
     }
@@ -243,7 +255,41 @@ function generateClarityConversion(argName: string, argType: any): string {
   }
 
   if (type.buff) {
-    return `Cl.buffer(${argName})`;
+    // Generate flexible buffer conversion code that matches the hooks implementation
+    return `(() => {
+      const value = ${argName};
+      // Direct Uint8Array
+      if (value instanceof Uint8Array) {
+        return Cl.buffer(value);
+      }
+      // Object notation with explicit type
+      if (typeof value === 'object' && value !== null && value.type && value.value) {
+        switch (value.type) {
+          case 'ascii':
+            return Cl.bufferFromAscii(value.value);
+          case 'utf8':
+            return Cl.bufferFromUtf8(value.value);
+          case 'hex':
+            return Cl.bufferFromHex(value.value);
+          default:
+            throw new Error(\`Unsupported buffer type: \${value.type}\`);
+        }
+      }
+      // Auto-detect string type
+      if (typeof value === 'string') {
+        // Check for hex (0x prefix or pure hex pattern)
+        if (value.startsWith('0x') || /^[0-9a-fA-F]+$/.test(value)) {
+          return Cl.bufferFromHex(value);
+        }
+        // Check for non-ASCII characters (UTF-8)
+        if (!/^[\\x00-\\x7F]*$/.test(value)) {
+          return Cl.bufferFromUtf8(value);
+        }
+        // Default to ASCII for simple ASCII strings
+        return Cl.bufferFromAscii(value);
+      }
+      throw new Error(\`Invalid buffer value: \${value}\`);
+    })()`;
   }
 
   if (type.optional) {
