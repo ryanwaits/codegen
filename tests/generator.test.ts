@@ -49,7 +49,9 @@ describe("Contract Generator", () => {
       expect(code).toContain(
         "import type { ContractCallParams, ReadOnlyCallParams } from 'clarity-abitype'"
       );
-      expect(code).toContain("import { Cl } from '@stacks/transactions'");
+      expect(code).toContain(
+        "import { Cl, validateStacksAddress } from '@stacks/transactions'"
+      );
       expect(code).not.toContain("fetchCallReadOnlyFunction");
       expect(code).not.toContain("makeContractCall");
       expect(code).not.toContain("openContractCall");
@@ -81,7 +83,9 @@ describe("Contract Generator", () => {
       expect(code).toContain(
         "import type { ContractCallParams, ReadOnlyCallParams } from 'clarity-abitype'"
       );
-      expect(code).toContain("import { Cl } from '@stacks/transactions'");
+      expect(code).toContain(
+        "import { Cl, validateStacksAddress } from '@stacks/transactions'"
+      );
       expect(code).toContain("fetchCallReadOnlyFunction, makeContractCall");
       expect(code).toContain("openContractCall");
 
@@ -117,9 +121,14 @@ describe("Contract Generator", () => {
       );
       expect(code).toContain("contractName: 'test-contract'");
       expect(code).toContain("functionName: 'get-balance'");
+      // Check for smart principal detection logic
+      expect(code).toContain("validateStacksAddress(");
+      expect(code).toContain("value.includes('.')");
       expect(code).toContain(
-        "functionArgs: [Cl.standardPrincipal(args.account)]"
+        "const [address, contractName] = value.split('.');"
       );
+      expect(code).toContain("Cl.contractPrincipal(address, contractName);");
+      expect(code).toContain("Cl.standardPrincipal(value);");
 
       // Check no-args function
       expect(code).toContain("functionName: 'get-info'");
@@ -150,8 +159,14 @@ describe("Contract Generator", () => {
       expect(code).toContain("makeContractCall({");
       expect(code).toContain("functionName: 'transfer'");
       expect(code).toContain("Cl.uint(args.amount)");
-      expect(code).toContain("Cl.standardPrincipal(args.sender)");
-      expect(code).toContain("Cl.standardPrincipal(args.recipient)");
+      // Check for smart principal detection logic instead of hardcoded values
+      expect(code).toContain("validateStacksAddress(");
+      expect(code).toContain("value.includes('.')");
+      expect(code).toContain(
+        "const [address, contractName] = value.split('.');"
+      );
+      expect(code).toContain("Cl.contractPrincipal(address, contractName);");
+      expect(code).toContain("Cl.standardPrincipal(value);");
       expect(code).toContain("validateWithAbi: true");
     });
 
@@ -176,8 +191,14 @@ describe("Contract Generator", () => {
       expect(code).toContain("openContractCall({");
       expect(code).toContain("functionName: 'transfer'");
       expect(code).toContain("Cl.uint(args.amount)");
-      expect(code).toContain("Cl.standardPrincipal(args.sender)");
-      expect(code).toContain("Cl.standardPrincipal(args.recipient)");
+      // Check for smart principal detection logic instead of hardcoded values
+      expect(code).toContain("validateStacksAddress(");
+      expect(code).toContain("value.includes('.')");
+      expect(code).toContain(
+        "const [address, contractName] = value.split('.');"
+      );
+      expect(code).toContain("Cl.contractPrincipal(address, contractName);");
+      expect(code).toContain("Cl.standardPrincipal(value);");
     });
 
     it("should handle contracts with only read-only functions", async () => {
