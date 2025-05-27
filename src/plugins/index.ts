@@ -84,7 +84,8 @@ export type { ClarinetPluginOptions } from "./clarinet/index.js";
 export { actions } from "./actions/index.js";
 export type { ActionsPluginOptions } from "./actions/index.js";
 
+export { react } from "./react/index.js";
+export type { ReactPluginOptions } from "./react/index.js";
+
 // Placeholder exports for future plugins
-// These will be implemented in Phase 4-5
-// export { hooks } from './hooks/index.js';
 // export { hiro } from './hiro/index.js';
