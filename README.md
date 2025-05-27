@@ -18,15 +18,13 @@ codegen generate
 import { mega } from './generated/contracts'
 import { makeContractCall } from '@stacks/transactions'
 
-const callbackParams = mega.callback('SP...', 'Hello world')
 await makeContractCall({
-  ...params,
+  ...mega.callback('SP...', 'Hello world'),
   network: 'mainnet',
 })
 
-const getBalanceParams = mega.getBalance()
 await fetchCallReadOnlyFunction({
-  ...params,
+  ...mega.getBalance(),
   network: 'mainnet'
 })
 ```
