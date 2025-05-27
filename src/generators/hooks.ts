@@ -1,17 +1,6 @@
 import { format } from "prettier";
 import type { ResolvedContract } from "../types/config.js";
 import type { ClarityFunction } from "clarity-abitype";
-import { useState, useCallback } from "react";
-import {
-  connect,
-  disconnect,
-  isConnected,
-  request,
-  openContractCall as stacksOpenContractCall,
-  openSTXTransfer,
-  openSignatureRequestPopup,
-  openContractDeploy,
-} from "@stacks/connect";
 
 /**
  * React hooks generator for contract interfaces and generic Stacks functionality
@@ -36,10 +25,10 @@ const GENERIC_HOOKS = [
 export async function generateContractHooks(
   contracts: ResolvedContract[]
 ): Promise<string> {
-  const imports = `import { useQuery, useMutation } from '@tanstack/react-query'
+  const imports = `import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
 import { useStacksConfig } from './provider'
-import { useContract } from './stacks'
+import { request, openContractCall as stacksOpenContractCall } from '@stacks/connect'
 import { ${contracts.map((c) => c.name).join(", ")} } from './contracts'`;
 
   const header = `/**
@@ -72,13 +61,9 @@ export async function generateGenericHooks(
   const imports = `import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, useCallback } from 'react'
 import { useStacksConfig } from './provider'
-import { connect, disconnect, isConnected, request, openContractCall as stacksOpenContractCall, openSTXTransfer, openSignatureRequestPopup, openContractDeploy } from '@stacks/connect'
-import { 
-  fetchAccountInfo, 
-  fetchTransaction, 
-  fetchBlock,
-  fetchAccountTransactions 
-} from './stacks-api'`;
+import { connect, disconnect, isConnected, request, openContractCall as stacksOpenContractCall } from '@stacks/connect'
+import { Cl, validateStacksAddress } from '@stacks/transactions'
+import type { ExtractFunctionArgs, ExtractFunctionNames, ClarityContract } from 'clarity-abitype'`;
 
   const header = `/**
  * Generated generic Stacks React hooks
@@ -156,25 +141,91 @@ function generateWriteHook(
   const argsType = generateArgsType(func.args);
 
   return `export function ${hookName}() {
-  const { openContractCall, isRequestPending } = useContract()
+  const config = useStacksConfig()
+  const queryClient = useQueryClient()
   
-  const ${toCamelCase(func.name)} = useCallback(async (args: ${argsType}, options?: {
-    postConditions?: any[];
-    attachment?: string;
-    onFinish?: (data: any) => void;
-    onCancel?: () => void;
-  }) => {
-    const contractCallData = ${contractName}.${toCamelCase(func.name)}(args)
-    
-    return await openContractCall({
-      ...contractCallData,
-      ...options
-    })
-  }, [openContractCall])
+  const mutation = useMutation({
+    mutationFn: async (params: {
+      args: ${argsType};
+      options?: {
+        postConditions?: any[];
+        attachment?: string;
+        onFinish?: (data: any) => void;
+        onCancel?: () => void;
+      };
+    }) => {
+      const { args, options = {} } = params
+      const contractCallData = ${contractName}.${toCamelCase(func.name)}(args)
+      const { contractAddress, contractName: name, functionName, functionArgs } = contractCallData
+      const network = config.network || 'mainnet'
+      const contract = \`\${contractAddress}.\${name}\`
+      
+      // Try @stacks/connect v8 stx_callContract first (SIP-030)
+      try {
+        const result = await request('stx_callContract', {
+          contract,
+          functionName,
+          functionArgs,
+          network,
+          ...options
+        })
+        
+        options.onFinish?.(result)
+        return result
+      } catch (connectError) {
+        // Fallback to openContractCall for broader wallet compatibility
+        console.warn('stx_callContract not supported, falling back to openContractCall:', connectError)
+        
+        return new Promise((resolve, reject) => {
+          stacksOpenContractCall({
+            contractAddress,
+            contractName: name,
+            functionName,
+            functionArgs,
+            network,
+            ...options,
+            onFinish: (data: any) => {
+              options.onFinish?.(data)
+              resolve(data)
+            },
+            onCancel: () => {
+              options.onCancel?.()
+              reject(new Error('User cancelled transaction'))
+            }
+          })
+        })
+      }
+    },
+    onSuccess: () => {
+      // Invalidate relevant queries on success
+      queryClient.invalidateQueries({ queryKey: ['stacks-account'] })
+    },
+    onError: (error) => {
+      console.error('Contract call failed:', error)
+    }
+  })
+
+  const ${toCamelCase(func.name)} = useCallback(async (
+    args: ${argsType}, 
+    options?: {
+      postConditions?: any[];
+      attachment?: string;
+      onFinish?: (data: any) => void;
+      onCancel?: () => void;
+    }
+  ) => {
+    return mutation.mutateAsync({ args, options })
+  }, [mutation])
 
   return {
     ${toCamelCase(func.name)},
-    isRequestPending
+    // Expose mutation state
+    isPending: mutation.isPending,
+    isError: mutation.isError,
+    isSuccess: mutation.isSuccess,
+    error: mutation.error,
+    data: mutation.data,
+    reset: mutation.reset
   }
 }`;
 }
@@ -361,11 +412,132 @@ function generateGenericHook(hookName: string): string {
   const queryClient = useQueryClient()
   const [isRequestPending, setIsRequestPending] = useState(false)
   
-  const openContractCall = useCallback(async (params: {
+  // Helper function to convert JS values to Clarity values based on ABI
+  const convertArgsWithAbi = (args: any, abiArgs: any[]): any[] => {
+    if (!abiArgs || abiArgs.length === 0) return []
+    
+    return abiArgs.map((abiArg, index) => {
+      const argValue = Array.isArray(args) 
+        ? args[index] 
+        : args[abiArg.name] || args[abiArg.name.replace(/-/g, '').replace(/_/g, '')]
+      return convertJSValueToClarityValue(argValue, abiArg.type)
+    })
+  }
+
+  // Helper function to convert buffer values with auto-detection
+  const convertBufferValue = (value: any): any => {
+    // Direct Uint8Array
+    if (value instanceof Uint8Array) {
+      return Cl.buffer(value)
+    }
+    
+    // Object notation with explicit type
+    if (typeof value === 'object' && value !== null && value.type && value.value) {
+      switch (value.type) {
+        case 'ascii':
+          return Cl.bufferFromAscii(value.value)
+        case 'utf8':
+          return Cl.bufferFromUtf8(value.value)
+        case 'hex':
+          return Cl.bufferFromHex(value.value)
+        default:
+          throw new Error(\`Unsupported buffer type: \${value.type}\`)
+      }
+    }
+    
+    // Auto-detect string type
+    if (typeof value === 'string') {
+      // 1. Check for hex (0x prefix or pure hex pattern)
+      if (value.startsWith('0x') || /^[0-9a-fA-F]+$/.test(value)) {
+        return Cl.bufferFromHex(value)
+      }
+      
+      // 2. Check for non-ASCII characters (UTF-8)
+      if (!/^[\\x00-\\x7F]*$/.test(value)) {
+        return Cl.bufferFromUtf8(value)
+      }
+      
+      // 3. Default to ASCII for simple ASCII strings
+      return Cl.bufferFromAscii(value)
+    }
+    
+    throw new Error(\`Invalid buffer value: \${value}\`)
+  }
+
+  // Helper function to convert a single JS value to ClarityValue
+  const convertJSValueToClarityValue = (value: any, type: any): any => {
+    if (typeof type === 'string') {
+      switch (type) {
+        case 'uint128':
+          return Cl.uint(value)
+        case 'int128':
+          return Cl.int(value)
+        case 'bool':
+          return Cl.bool(value)
+        case 'principal':
+          if (!validateStacksAddress(value.split('.')[0])) {
+            throw new Error('Invalid Stacks address format')
+          }
+          if (value.includes('.')) {
+            const [address, contractName] = value.split('.')
+            return Cl.contractPrincipal(address, contractName)
+          } else {
+            return Cl.standardPrincipal(value)
+          }
+        default:
+          return value
+      }
+    }
+
+    if (type['string-ascii']) {
+      return Cl.stringAscii(value)
+    }
+
+    if (type['string-utf8']) {
+      return Cl.stringUtf8(value)
+    }
+
+    if (type.buff) {
+      return convertBufferValue(value)
+    }
+
+    if (type.optional) {
+      return value !== null ? Cl.some(convertJSValueToClarityValue(value, type.optional)) : Cl.none()
+    }
+
+    if (type.list) {
+      return Cl.list(value.map((item: any) => convertJSValueToClarityValue(item, type.list.type)))
+    }
+
+    if (type.tuple) {
+      const tupleData = type.tuple.reduce((acc: any, field: any) => {
+        acc[field.name] = convertJSValueToClarityValue(value[field.name], field.type)
+        return acc
+      }, {})
+      return Cl.tuple(tupleData)
+    }
+
+    if (type.response) {
+      return 'ok' in value 
+        ? Cl.ok(convertJSValueToClarityValue(value.ok, type.response.ok))
+        : Cl.error(convertJSValueToClarityValue(value.err, type.response.error))
+    }
+
+    return value
+  }
+
+  // Helper function to find a function in an ABI by name
+  const findFunctionInAbi = (abi: any, functionName: string): any => {
+    if (!abi || !abi.functions) return null
+    return abi.functions.find((func: any) => func.name === functionName)
+  }
+  
+  // Legacy function - unchanged, backward compatible
+  const legacyOpenContractCall = useCallback(async (params: {
     contractAddress: string;
     contractName: string;
     functionName: string;
-    functionArgs: any[];
+    functionArgs: any[]; // Pre-converted Clarity values
     network?: string;
     postConditions?: any[];
     attachment?: string;
@@ -432,7 +604,92 @@ function generateGenericHook(hookName: string): string {
     }
   }, [config.network, queryClient])
 
+  // Enhanced function - requires ABI, auto-converts JS values
+  const openContractCall = useCallback(async <
+    T extends ClarityContract,
+    FN extends ExtractFunctionNames<T>
+  >(params: {
+    contractAddress: string;
+    contractName: string;
+    functionName: FN;
+    abi: T;
+    functionArgs: ExtractFunctionArgs<T, FN>;
+    network?: string;
+    postConditions?: any[];
+    attachment?: string;
+    onFinish?: (data: any) => void;
+    onCancel?: () => void;
+  }) => {
+    setIsRequestPending(true)
+    
+    try {
+      const { contractAddress, contractName, functionName, functionArgs, abi, onFinish, onCancel, ...options } = params
+      const network = params.network || config.network || 'mainnet'
+      const contract = \`\${contractAddress}.\${contractName}\`
+      
+      // Find the function in the ABI and convert args
+      const abiFunction = findFunctionInAbi(abi, functionName)
+      if (!abiFunction) {
+        throw new Error(\`Function '\${functionName}' not found in ABI\`)
+      }
+      
+      const processedArgs = convertArgsWithAbi(functionArgs, abiFunction.args || [])
+      
+      // Try @stacks/connect v8 stx_callContract first (SIP-030)
+      try {
+        const result = await request('stx_callContract', {
+          contract,
+          functionName,
+          functionArgs: processedArgs,
+          network,
+          ...options
+        })
+        
+        // Invalidate relevant queries on success
+        queryClient.invalidateQueries({ 
+          queryKey: ['stacks-account'] 
+        })
+        
+        onFinish?.(result)
+        return result
+      } catch (connectError) {
+        // Fallback to openContractCall for broader wallet compatibility
+        console.warn('stx_callContract not supported, falling back to openContractCall:', connectError)
+        
+        return new Promise((resolve, reject) => {
+          stacksOpenContractCall({
+            contractAddress,
+            contractName,
+            functionName,
+            functionArgs: processedArgs,
+            network,
+            ...options,
+            onFinish: (data: any) => {
+              // Invalidate relevant queries on success
+              queryClient.invalidateQueries({ 
+                queryKey: ['stacks-account'] 
+              })
+              
+              onFinish?.(data)
+              resolve(data)
+            },
+            onCancel: () => {
+              onCancel?.()
+              reject(new Error('User cancelled transaction'))
+            }
+          })
+        })
+      }
+    } catch (error) {
+      console.error('Contract call failed:', error)
+      throw error instanceof Error ? error : new Error('Contract call failed')
+    } finally {
+      setIsRequestPending(false)
+    }
+  }, [config.network, queryClient])
+
   return {
+    legacyOpenContractCall,
     openContractCall,
     isRequestPending
   }
@@ -530,33 +787,27 @@ function generateGenericHook(hookName: string): string {
 }`;
 
     case "useWaitForTransaction":
-      return `export function useWaitForTransaction() {
+      return `export function useWaitForTransaction(txId?: string) {
   const config = useStacksConfig()
   
-  return useMutation({
-    mutationFn: async (txId: string) => {
-      return new Promise((resolve, reject) => {
-        const poll = async () => {
-          try {
-            const tx = await fetchTransaction({ 
-              txId, 
-              network: config.network,
-              apiUrl: config.apiUrl
-            })
-            if (tx.tx_status === 'success') {
-              resolve(tx)
-            } else if (tx.tx_status === 'abort_by_response' || tx.tx_status === 'abort_by_post_condition') {
-              reject(new Error(\`Transaction failed: \${tx.tx_status}\`))
-            } else {
-              setTimeout(poll, 2000)
-            }
-          } catch (error) {
-            reject(error)
-          }
-        }
-        poll()
-      })
-    }
+  return useQuery({
+    queryKey: ['wait-for-transaction', txId, config.network],
+    queryFn: () => fetchTransaction({
+      txId: txId!,
+      network: config.network,
+      apiUrl: config.apiUrl
+    }),
+    enabled: !!txId,
+    refetchInterval: (data) => {
+      // Stop polling when transaction is complete
+      if (data?.tx_status === 'success' || 
+          data?.tx_status === 'abort_by_response' || 
+          data?.tx_status === 'abort_by_post_condition') {
+        return false
+      }
+      return 2000 // Poll every 2 seconds
+    },
+    staleTime: 0 // Always refetch
   })
 }`;
 
@@ -564,19 +815,16 @@ function generateGenericHook(hookName: string): string {
       return `export function useOpenSTXTransfer() {
   const config = useStacksConfig()
   const queryClient = useQueryClient()
-  const [isRequestPending, setIsRequestPending] = useState(false)
   
-  const openSTXTransfer = useCallback(async (params: {
-    recipient: string;
-    amount: string | number;
-    memo?: string;
-    network?: string;
-    onFinish?: (data: any) => void;
-    onCancel?: () => void;
-  }) => {
-    setIsRequestPending(true)
-    
-    try {
+  const mutation = useMutation({
+    mutationFn: async (params: {
+      recipient: string;
+      amount: string | number;
+      memo?: string;
+      network?: string;
+      onFinish?: (data: any) => void;
+      onCancel?: () => void;
+    }) => {
       const { recipient, amount, memo, onFinish, onCancel, ...options } = params
       const network = params.network || config.network || 'mainnet'
       
@@ -588,11 +836,6 @@ function generateGenericHook(hookName: string): string {
           network,
           ...options,
           onFinish: (data: any) => {
-            // Invalidate relevant queries on success
-            queryClient.invalidateQueries({ 
-              queryKey: ['stacks-account'] 
-            })
-            
             onFinish?.(data)
             resolve(data)
           },
@@ -602,34 +845,50 @@ function generateGenericHook(hookName: string): string {
           }
         })
       })
-    } catch (error) {
+    },
+    onSuccess: () => {
+      // Invalidate relevant queries on success
+      queryClient.invalidateQueries({ queryKey: ['stacks-account'] })
+    },
+    onError: (error) => {
       console.error('STX transfer failed:', error)
-      throw error instanceof Error ? error : new Error('STX transfer failed')
-    } finally {
-      setIsRequestPending(false)
     }
-  }, [config.network, queryClient])
+  })
+
+  const openSTXTransfer = useCallback(async (params: {
+    recipient: string;
+    amount: string | number;
+    memo?: string;
+    network?: string;
+    onFinish?: (data: any) => void;
+    onCancel?: () => void;
+  }) => {
+    return mutation.mutateAsync(params)
+  }, [mutation])
 
   return {
     openSTXTransfer,
-    isRequestPending
+    // Expose mutation state
+    isPending: mutation.isPending,
+    isError: mutation.isError,
+    isSuccess: mutation.isSuccess,
+    error: mutation.error,
+    data: mutation.data,
+    reset: mutation.reset
   }
 }`;
 
     case "useSignMessage":
       return `export function useSignMessage() {
   const config = useStacksConfig()
-  const [isRequestPending, setIsRequestPending] = useState(false)
   
-  const signMessage = useCallback(async (params: {
-    message: string;
-    network?: string;
-    onFinish?: (data: any) => void;
-    onCancel?: () => void;
-  }) => {
-    setIsRequestPending(true)
-    
-    try {
+  const mutation = useMutation({
+    mutationFn: async (params: {
+      message: string;
+      network?: string;
+      onFinish?: (data: any) => void;
+      onCancel?: () => void;
+    }) => {
       const { message, onFinish, onCancel, ...options } = params
       const network = params.network || config.network || 'mainnet'
       
@@ -648,17 +907,30 @@ function generateGenericHook(hookName: string): string {
           }
         })
       })
-    } catch (error) {
+    },
+    onError: (error) => {
       console.error('Message signing failed:', error)
-      throw error instanceof Error ? error : new Error('Message signing failed')
-    } finally {
-      setIsRequestPending(false)
     }
-  }, [config.network])
+  })
+
+  const signMessage = useCallback(async (params: {
+    message: string;
+    network?: string;
+    onFinish?: (data: any) => void;
+    onCancel?: () => void;
+  }) => {
+    return mutation.mutateAsync(params)
+  }, [mutation])
 
   return {
     signMessage,
-    isRequestPending
+    // Expose mutation state
+    isPending: mutation.isPending,
+    isError: mutation.isError,
+    isSuccess: mutation.isSuccess,
+    error: mutation.error,
+    data: mutation.data,
+    reset: mutation.reset
   }
 }`;
 
@@ -666,19 +938,16 @@ function generateGenericHook(hookName: string): string {
       return `export function useDeployContract() {
   const config = useStacksConfig()
   const queryClient = useQueryClient()
-  const [isRequestPending, setIsRequestPending] = useState(false)
   
-  const deployContract = useCallback(async (params: {
-    contractName: string;
-    codeBody: string;
-    network?: string;
-    postConditions?: any[];
-    onFinish?: (data: any) => void;
-    onCancel?: () => void;
-  }) => {
-    setIsRequestPending(true)
-    
-    try {
+  const mutation = useMutation({
+    mutationFn: async (params: {
+      contractName: string;
+      codeBody: string;
+      network?: string;
+      postConditions?: any[];
+      onFinish?: (data: any) => void;
+      onCancel?: () => void;
+    }) => {
       const { contractName, codeBody, onFinish, onCancel, ...options } = params
       const network = params.network || config.network || 'mainnet'
       
@@ -689,11 +958,6 @@ function generateGenericHook(hookName: string): string {
           network,
           ...options,
           onFinish: (data: any) => {
-            // Invalidate relevant queries on success
-            queryClient.invalidateQueries({ 
-              queryKey: ['stacks-account'] 
-            })
-            
             onFinish?.(data)
             resolve(data)
           },
@@ -703,17 +967,36 @@ function generateGenericHook(hookName: string): string {
           }
         })
       })
-    } catch (error) {
+    },
+    onSuccess: () => {
+      // Invalidate relevant queries on success
+      queryClient.invalidateQueries({ queryKey: ['stacks-account'] })
+    },
+    onError: (error) => {
       console.error('Contract deployment failed:', error)
-      throw error instanceof Error ? error : new Error('Contract deployment failed')
-    } finally {
-      setIsRequestPending(false)
     }
-  }, [config.network, queryClient])
+  })
+
+  const deployContract = useCallback(async (params: {
+    contractName: string;
+    codeBody: string;
+    network?: string;
+    postConditions?: any[];
+    onFinish?: (data: any) => void;
+    onCancel?: () => void;
+  }) => {
+    return mutation.mutateAsync(params)
+  }, [mutation])
 
   return {
     deployContract,
-    isRequestPending
+    // Expose mutation state
+    isPending: mutation.isPending,
+    isError: mutation.isError,
+    isSuccess: mutation.isSuccess,
+    error: mutation.error,
+    data: mutation.data,
+    reset: mutation.reset
   }
 }`;
 
