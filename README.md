@@ -1,122 +1,104 @@
 # @stacks/codegen
 
-Generate type-safe React hooks and contract interfaces for Stacks blockchain applications.
+Generate type-safe functions, hooks and interfaces for Clarity smart contracts with automatic type conversion and React integration.
 
-## Why @stacks/codegen?
+## Usage
 
-**Before** - Manual, error-prone contract interactions:
+### 1. Contract Interface
 ```typescript
-// ❌ Manual Clarity conversion, no type safety
-import { openContractCall } from '@stacks/connect'
-import { Cl } from '@stacks/transactions'
+const mega = {
+  // Direct function calls - returns contract call params
+  callback(sender: string, memo: string) {
+    return {
+      contractAddress: '...',
+      contractName: '...',
+      functionName: 'callback',
+      functionArgs: [Cl.standardPrincipal(sender), Cl.bufferFromAscii(memo)]
+    }
+  }
+}
 
-await openContractCall({
-  contractAddress: 'SP2QEZ06AGJ3RKJPBV14SY1V5BBFNAW33D96YPGZF',
-  contractName: 'BNS-V2', 
-  functionName: 'transfer',
-  functionArgs: [
-    Cl.uint(1),                                                    // Manual conversion
-    Cl.standardPrincipal('SP2PABAF9FTAJYNFZH93XENAJ8FVY99RRM50D2JG9'), // Manual conversion
-    Cl.standardPrincipal('SP3FGQ8Z7JY9BWYZ5WM53E0M9NK7WHJF0691NZ159')  // Manual conversion
-  ],
-  onFinish: data => console.log(data)
+// Use with `@stacks/transactions`
+const callbackParams = mega.callback("SP...", "Hello")
+await makeContractCall({
+  ...params,
+  network: 'mainnet'
+})
+
+const getBalanceParams = mega.getBalance()
+await fetchCallReadOnlyFunction({
+  ...params,
+  network: 'mainnet'
 })
 ```
 
-**After** - Type-safe, automatic conversion:
+### 2. Built-in Read/Write Helpers
 ```typescript
-// ✅ Type-safe, automatic Clarity conversion, React hooks
+// Read helpers - returns Promise<result>
+const balance = await mega.read.getBalance("SP...")
+
+// Write helpers - returns Promise<result>
+const result = await mega.write.transfer(100n, "SP...")
+```
+
+### 3. React Integration
+```typescript
 import { useBnsV2Transfer } from './generated/hooks'
 
-const { transfer, isRequestPending } = useBnsV2Transfer()
+function App() {
+  const { transfer, isRequestPending } = useBnsV2Transfer()
   
-const handleTransfer = async () => {
-  await transfer({
-    id: 1n,                    // Auto-converted to Cl.uint()
-    owner: 'SP2PABAF...',      // Auto-converted to Cl.standardPrincipal()
-    recipient: 'SP3FGQ8Z...'   // Auto-converted to Cl.standardPrincipal()
-  }, {
-    onFinish: data => console.log('Success:', data),
-    onCancel: () => console.log('Cancelled')
-  })
+  return (
+    <button 
+      onClick={() => transfer({
+        id: 1n,
+        owner: 'SP...',
+        recipient: 'SP...'
+      })}
+      disabled={isRequestPending}
+    >
+      Transfer
+    </button>
+  )
 }
 ```
 
-## Features
-
-- 🎯 **Type-safe contract interfaces** - Full TypeScript support with automatic Clarity conversion
-- ⚛️ **React hooks** - Generated hooks with micro-stacks inspired API
-- 🔗 **SIP-030 compliance** - Full `@stacks/connect` v8 integration with fallbacks
-- 📦 **Multiple sources** - Deployed contracts or local Clarity files
-- 🚀 **Zero config** - Works out of the box with sensible defaults
-
 ## Installation
 
-> **Note:** This package is not yet published to npm. Publishing coming soon! For now, you can install it locally:
+> **Note:** This package is not yet published to npm. For now, you can install it locally:
 
-### Local Development Setup
-
-1. **Clone and build the package**
 ```bash
-git clone https://github.com/your-org/stacks-codegen.git
-cd stacks-codegen
+# Clone and build
+git clone https://github.com/ryanwaits/codegen.git
+cd codegen
 bun install
 bun run build
-```
 
-2. **Link globally for CLI usage**
-```bash
+# Link globally
 bun link
-```
 
-3. **In your project, link the package**
-```bash
+# In your project
 cd /path/to/your/project
 bun link @stacks/codegen
 ```
+## Configuration
 
-4. **Or install as a dev dependency directly from git**
-```bash
-# Alternative: Install directly from git
-bun add -D git+https://github.com/your-org/stacks-codegen.git
-```
+### `stacks init`
 
-### Once Published (Coming Soon)
-```bash
-npm install -D @stacks/codegen
-# or
-bun add -D @stacks/codegen
-```
+Creates a `stacks.config.ts` file
 
-## Quick Start
-
-1. **Initialize configuration**
-```bash
-# If you used bun link:
-stacks init
-
-# If you installed from git:
-npx stacks init
-```
-
-2. **Configure contracts** in `stacks.config.ts`
 ```typescript
+// stacks.config.ts
 import { defineConfig } from '@stacks/codegen'
 
 export default defineConfig({
   contracts: [
+    // Deployed contract
     {
       address: 'SP2QEZ06AGJ3RKJPBV14SY1V5BBFNAW33D96YPGZF.BNS-V2'
     },
     
-    {
-      address: {
-        mainnet: 'SP2QEZ06AGJ3RKJPBV14SY1V5BBFNAW33D96YPGZF.BNS-V2',
-        testnet: 'ST2QEZ06AGJ3RKJPBV14SY1V5BBFNAW33D96YPGZF.BNS-V2-TEST'
-      },
-      name: 'bnsContract'
-    },
-    
+    // Local Clarity file
     {
       source: './contracts/my-token.clar',
       name: 'tokenContract'
@@ -134,241 +116,51 @@ export default defineConfig({
 })
 ```
 
-3. **Generate interfaces**
-```bash
-# If you used bun link:
-stacks generate
+### `stacks generate`
 
-# If you installed from git:
-npx stacks generate
-```
+This generates your code to the path set in your `stacks.config.ts` file.
 
-4. **Use in your React app**
-```typescript
-import { useBnsV2Transfer, useBnsV2GetOwner } from './generated/hooks'
-import { useAccount, useConnect } from './generated/stacks'
+## Future Enhancements
 
-function BNSApp() {
-  const { address, isConnected } = useAccount()
-  const { connect } = useConnect()
-  const { data: owner } = useBnsV2GetOwner(1n) // Auto-converted
-  const { transfer, isRequestPending } = useBnsV2Transfer()
+### **Simplify Config**
 
-  if (!isConnected) {
-    return <button onClick={() => connect()}>Connect Wallet</button>
-  }
-
-  return (
-    <div>
-      <p>BNS Name Owner: {owner}</p>
-      <button 
-        onClick={() => transfer({
-          id: 1n,
-          owner: address!,
-          recipient: 'SP3FGQ8Z7JY9BWYZ5WM53E0M9NK7WHJF0691NZ159'
-        })}
-        disabled={isRequestPending}
-      >
-        Transfer BNS Name
-      </button>
-    </div>
-  )
-}
-```
-
-## Contract Interface Usage
-
-### Generated Contract Objects
-
-```typescript
-import { bnsV2 } from './generated/contracts'
-
-// Direct usage with openContractCall from `@stacks/connect`
-await openContractCall({
-  ...bnsV2.transfer({
-    id: 1n,
-    owner: 'SP...',
-    recipient: 'SP...'
-  }),
-  onFinish: data => console.log(data)
-})
-
-// Read-only functions
-const owner = await bnsV2.read.getOwner({ id: 1n })
-
-// Write functions with private key
-const result = await bnsV2.write.transfer({
-  id: 1n,
-  owner: 'SP...',
-  recipient: 'SP...'
-}, {
-  senderKey: 'your-private-key',
-  network: 'mainnet'
-})
-```
-
-## React Hooks
-
-### Generated Contract Hooks
-
-```typescript
-// Read-only hooks
-const { data: owner, isLoading } = useBnsV2GetOwner(1n)
-const { data: tokenUri } = useBnsV2GetTokenUri(1n)
-
-// Write hooks
-const { transfer, isRequestPending } = useBnsV2Transfer()
-
-await transfer({
-  id: 1n,
-  owner: 'SP...',
-  recipient: 'SP...'
-}, {
-  postConditions: [...],
-  attachment: 'Transfer memo',
-  onFinish: (data) => console.log('Success:', data),
-  onCancel: () => console.log('Cancelled')
-})
-```
-
-### Generic Stacks Hooks
-
-```typescript
-import { 
-  useAccount, 
-  useConnect, 
-  useContract,
-  useOpenSTXTransfer,
-  useSignMessage 
-} from './generated/stacks'
-
-// Connection management
-const { address, isConnected } = useAccount()
-const { connect } = useConnect()
-
-// Generic contract calls
-const { openContractCall, isRequestPending } = useContract()
-await openContractCall({
-  contractAddress: 'SP...',
-  contractName: 'my-contract',
-  functionName: 'my-function',
-  functionArgs: [Cl.uint(123)],
-  onFinish: (data) => console.log(data)
-})
-
-// STX transfers
-const { openSTXTransfer } = useOpenSTXTransfer()
-await openSTXTransfer({
-  recipient: 'SP...',
-  amount: '1000000', // 1 STX
-  memo: 'Payment',
-  onFinish: (data) => console.log(data)
-})
-
-// Message signing
-const { signMessage } = useSignMessage()
-await signMessage({
-  message: 'Hello Stacks!',
-  onFinish: (data) => console.log(data)
-})
-```
-
-## Configuration
-
-### Contract Sources
-
-```typescript
+```ts
 export default defineConfig({
-  contracts: [
-    // Deployed contract
-    {
-      address: 'SP2QEZ06AGJ3RKJPBV14SY1V5BBFNAW33D96YPGZF.BNS-V2'
-    },
-    
-    // Multi-network contract
-    {
-      address: {
-        mainnet: 'SP2QEZ06AGJ3RKJPBV14SY1V5BBFNAW33D96YPGZF.BNS-V2',
-        testnet: 'ST2QEZ06AGJ3RKJPBV14SY1V5BBFNAW33D96YPGZF.BNS-V2-TEST'
-      },
-      name: 'bnsContract'
-    },
-    
-    // Local Clarity file
-    {
-      source: './contracts/my-token.clar',
-      name: 'tokenContract'
-    }
-  ]
+  out: 'src/generated.ts',
+  contracts: [],
+  plugins: [],
 })
 ```
 
-### Runtime Options
+### **Plugin System**
 
-```typescript
+Add support for plugins to simplify configuration for common use cases
+
+- Example plugins:
+  - `hiro` - Fetch ABIs with Hiro API
+  - `clarinet` - Generate ABIs from local Clarinet project
+  - `hooks` - Generate custom hooks for your contracts
+
+```ts
+import { hiro, clarinet, hooks } from '@stacks/codegen/plugins'
+
 export default defineConfig({
-  output: {
-    runtime: 'minimal', // Just contract interfaces
-    // OR
-    runtime: 'full',    // Includes read/write helpers + React hooks
-    hooks: {
-      enabled: true,
-      contracts: './src/generated/hooks.ts',
-      stacks: './src/generated/stacks.ts',
-      include: ['useAccount', 'useContract', 'useOpenSTXTransfer'] // Optional
-    }
-  }
+  out: 'src/generated.ts',
+  contracts: [{ address: 'SP2QEZ06AGJ3RKJPBV14SY1V5BBFNAW33D96YPGZF.BNS-V2' }],
+  plugins: [
+    hiro({
+      apiKey: process.env.HIRO_API_KEY!,
+      network: 'mainnet',
+    }),
+    clarinet({
+      path: './Clarinet.toml',
+    }),
+    hooks({
+      include: ['useAccount', 'useConnect', 'useDisconnect'],
+    })
+  ],
 })
 ```
-
-### Available Generic Hooks
-
-- `useAccount` - Wallet connection state
-- `useConnect` / `useDisconnect` - Wallet connection management  
-- `useNetwork` - Network information
-- `useContract` - Generic contract calls
-- `useOpenSTXTransfer` - STX transfers
-- `useSignMessage` - Message signing
-- `useDeployContract` - Contract deployment
-- `useReadContract` - Generic read-only calls
-- `useTransaction` - Transaction monitoring
-- `useWaitForTransaction` - Transaction confirmation
-
-## Provider Setup
-
-```typescript
-import { StacksQueryProvider, createStacksConfig } from './generated/provider'
-
-function App() {
-  const config = createStacksConfig({
-    network: 'mainnet'
-  })
-
-  return (
-    <StacksQueryProvider config={config}>
-      <YourApp />
-    </StacksQueryProvider>
-  )
-}
-```
-
-## API Reference
-
-### Commands
-
-> **Note:** Replace `npx stacks` with `stacks` if you used `bun link` for global installation.
-
-- `npx stacks init` - Create configuration file
-- `npx stacks generate` - Generate interfaces and hooks
-
-### Configuration Options
-
-- `contracts` - Array of contract sources
-- `output.path` - Generated contracts file path
-- `output.runtime` - `'minimal'` or `'full'`
-- `output.hooks.enabled` - Enable React hooks generation
-- `network` - Default network (`'mainnet'` | `'testnet'` | `'devnet'`)
-- `apiKey` - Hiro API key for higher rate limits
 
 ## License
 
