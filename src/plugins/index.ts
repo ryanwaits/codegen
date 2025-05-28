@@ -87,5 +87,5 @@ export type { ActionsPluginOptions } from "./actions/index.js";
 export { react } from "./react/index.js";
 export type { ReactPluginOptions } from "./react/index.js";
 
-// Placeholder exports for future plugins
-// export { hiro } from './hiro/index.js';
+export { hiro } from "./hiro/index.js";
+export type { HiroPluginOptions } from "./hiro/types.js";

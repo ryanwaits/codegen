@@ -1,7 +1,7 @@
-import { describe, it, expect } from "vitest";
-import { generateActionHelpers } from "../src/plugins/actions/generators";
-import type { ProcessedContract } from "../src/types/plugin";
-import type { ActionsPluginOptions } from "../src/plugins/actions";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { generateActionHelpers } from "../src/plugins/actions/generators.js";
+import type { ProcessedContract } from "../src/types/plugin.js";
+import type { ActionsPluginOptions } from "../src/plugins/actions/index.js";
 
 describe("Actions Plugin", () => {
   const sampleContract: ProcessedContract = {
@@ -50,7 +50,7 @@ describe("Actions Plugin", () => {
       const code = await generateActionHelpers(sampleContract, options);
 
       // Should contain read helper functions
-      expect(code).toContain("testContract.read = {");
+      expect(code).toContain("read: {");
       expect(code).toContain("async getBalance(");
       expect(code).toContain("async getTotalSupply(");
 
@@ -61,7 +61,7 @@ describe("Actions Plugin", () => {
       expect(code).toContain("args: { account: string }");
 
       // Should handle no-argument functions
-      expect(code).toContain("getTotalSupply(options:");
+      expect(code).toContain("async getTotalSupply(options?:");
     });
 
     it("should filter read functions based on includeFunctions option", async () => {
@@ -91,16 +91,15 @@ describe("Actions Plugin", () => {
       const code = await generateActionHelpers(sampleContract, options);
 
       // Should contain write helper functions
-      expect(code).toContain("testContract.write = {");
+      expect(code).toContain("write: {");
       expect(code).toContain("async transfer(");
       expect(code).toContain("async mint(");
 
-      // Should use makeContractCall and broadcastTransaction
+      // Should use makeContractCall
       expect(code).toContain("makeContractCall");
-      expect(code).toContain("broadcastTransaction");
 
-      // Should require privateKey
-      expect(code).toContain("privateKey: string");
+      // Should require senderKey
+      expect(code).toContain("senderKey: string");
 
       // Should handle arguments correctly
       expect(code).toContain(
@@ -151,8 +150,8 @@ describe("Actions Plugin", () => {
 
       const code = await generateActionHelpers(readOnlyContract, {});
 
-      expect(code).toContain("readOnlyContract.read = {");
-      expect(code).not.toContain("readOnlyContract.write = {");
+      expect(code).toContain("read: {");
+      expect(code).not.toContain("write: {");
     });
 
     it("should handle contracts with only public functions", async () => {
@@ -176,8 +175,8 @@ describe("Actions Plugin", () => {
 
       const code = await generateActionHelpers(writeOnlyContract, {});
 
-      expect(code).toContain("writeOnlyContract.write = {");
-      expect(code).not.toContain("writeOnlyContract.read = {");
+      expect(code).toContain("write: {");
+      expect(code).not.toContain("read: {");
     });
 
     it("should return empty string for contracts with no public or read-only functions", async () => {

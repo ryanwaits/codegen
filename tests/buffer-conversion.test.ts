@@ -66,11 +66,6 @@ describe("Buffer Conversion Enhancement", () => {
   it("should generate contract interface that accepts the flexible buffer types", async () => {
     const code = await generateContractInterface([contractWithBuffer]);
 
-    // Log the generated code for manual inspection
-    console.log("\n=== Generated Contract Interface ===");
-    console.log(code);
-    console.log("=== End Generated Interface ===\n");
-
     // The generated interface should allow these patterns:
     // 1. mega.callback({ sender: "SP...", memo: "Hello" })
     // 2. mega.callback({ sender: "SP...", memo: new Uint8Array([72, 101, 108, 108, 111]) })

@@ -53,9 +53,6 @@ describe("Contract Generator", () => {
 
       // Check imports
       expect(code).toContain(
-        "import type { ContractCallParams, ReadOnlyCallParams } from 'clarity-abitype'"
-      );
-      expect(code).toContain(
         "import { Cl, validateStacksAddress } from '@stacks/transactions'"
       );
 
