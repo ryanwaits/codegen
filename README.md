@@ -1,13 +1,6 @@
 # @stacks/codegen
 
-Generate type-safe functions, hooks and interfaces for Clarity smart contracts with automatic type conversion and React integration.
-
-```bash
-codegen init
-codegen generate
-✔ Generation complete for 2 contracts
-📄 ./src/generated/contracts.ts
-```
+Generate fully typed contract interfaces, functions, and hooks for Clarity smart contracts.
 
 ## Usage
 
@@ -15,7 +8,7 @@ codegen generate
 ```typescript
 // Usage with `@stacks/transactions`
 import { mega } from './generated/contracts'
-import { makeContractCall } from '@stacks/transactions'
+import { fetchCallReadOnlyFunction, makeContractCall } from '@stacks/transactions'
 
 await makeContractCall({
   ...mega.callback({
@@ -31,7 +24,7 @@ await fetchCallReadOnlyFunction({
 })
 ```
 
-### 2. Use built-in read/write helpers for convenience
+### 2. Use built-in read/write helpers
 ```typescript
 // Read helpers
 const balance = await mega.read.getBalance() // {type: 'uint', value: 42000000n}
@@ -107,13 +100,13 @@ export default defineConfig({
 })
 ```
 
-Once you have added your contracts, you can run `codegen generate` to fetch the ABI and generate your functions.
+Run `⁠codegen generate` to pull the ABIs from your local Clarinet contracts and create fully type-safe interfaces for your project.
 
 ```bash
 codegen generate
+✔ Generation complete for 2 contracts
+📄 ./src/generated/contracts.ts
 ```
-
-You can find them at the location you configured in your `stacks.config.ts` file.
 
 ## Advanced
 
