@@ -100,7 +100,7 @@ export default defineConfig({
 })
 ```
 
-Run `⁠codegen generate` to pull the ABIs from your local Clarinet contracts and create fully type-safe interfaces for your project.
+Run `⁠codegen generate` to create fully type-safe interfaces for your contracts.
 
 ```bash
 codegen generate
