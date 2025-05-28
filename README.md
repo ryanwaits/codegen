@@ -119,7 +119,7 @@ import { clarinet, actions, react, hiro } from '@stacks/codegen/plugins'
 export default defineConfig({
   out: 'src/generated.ts',
   plugins: [
-    clarinet(),    // Generate lLocal ABI contracts from Clarinet
+    clarinet(),    // Generate contract interfaces from local Clarinet project
     actions(),     // Add read/write helper functions
     react(),       // Generate React hooks
     hiro({         // Generate ABI contracts from Hiro API
