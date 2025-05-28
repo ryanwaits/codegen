@@ -5,14 +5,13 @@ Generate type-safe functions, hooks and interfaces for Clarity smart contracts w
 ```bash
 codegen init
 codegen generate
-✔ Configuration loaded
-✔ Resolved 2 contracts
-✔ Generated contracts at `./generated/contracts.ts`
+✔ Generation complete for 2 contracts
+📄 ./src/generated/contracts.ts
 ```
 
 ## Usage
 
-### 1. Utilize the contract interface for type-safe parameters
+### 1. Utilize the generated contract interfaces with familiar libraries
 ```typescript
 // Usage with `@stacks/transactions`
 import { mega } from './generated/contracts'
@@ -49,7 +48,7 @@ const result = await mega.write.transfer(
 );
 ```
 
-### 3. React Integration
+### 3. React integration
 ```typescript
 import { useBnsV2Transfer } from './generated/hooks'
 
@@ -86,12 +85,12 @@ bun run build
 bun link
 
 # In your project
-cd /path/to/your/project
+cd /path/to/your/clarinet-project
 bun link @stacks/codegen
 ```
 ## Setup
 
-To create a `stacks.config.ts` file, run `codegen init` in your project:
+To create a `stacks.config.ts` file, run `codegen init` in your Clarinet project:
 
 ```bash
 codegen init
@@ -100,13 +99,11 @@ codegen init
 ```typescript
 // stacks.config.ts
 import { defineConfig } from '@stacks/codegen'
+import { clarinet } from '@stacks/codegen/plugins'
 
 export default defineConfig({
-  contracts: [{ address: 'SP2QEZ06AGJ3RKJPBV14SY1V5BBFNAW33D96YPGZF.BNS-V2' }],
-  output: {
-    path: './src/generated/contracts.ts',
-    runtime: 'minimal',
-  }
+  out: 'src/generated.ts',
+  plugins: [clarinet()],
 })
 ```
 
@@ -118,47 +115,35 @@ codegen generate
 
 You can find them at the location you configured in your `stacks.config.ts` file.
 
-## Future Enhancements
+## Advanced
 
-### **Simplify Config**
+### Plugins
 
-```ts
-export default defineConfig({
-  out: 'src/generated.ts',
-  contracts: [],
-  plugins: [],
-})
-```
-
-### **Plugin System**
-
-Add support for plugins to simplify configuration for common use cases
-
-- Example plugins:
-  - `hiro` - Fetch ABIs with Hiro API
-  - `clarinet` - Generate ABIs from local Clarinet project
-  - `hooks` - Generate custom hooks for your contracts
-
-```ts
-import { hiro, clarinet, hooks } from '@stacks/codegen/plugins'
+```typescript
+import { defineConfig } from '@stacks/codegen'
+import { clarinet, actions, react, hiro } from '@stacks/codegen/plugins'
 
 export default defineConfig({
   out: 'src/generated.ts',
-  contracts: [{ address: 'SP2QEZ06AGJ3RKJPBV14SY1V5BBFNAW33D96YPGZF.BNS-V2' }],
   plugins: [
-    hiro({
+    clarinet(),    // Generate lLocal ABI contracts from Clarinet
+    actions(),     // Add read/write helper functions
+    react(),       // Generate React hooks
+    hiro({         // Generate ABI contracts from Hiro API
       apiKey: process.env.HIRO_API_KEY!,
       network: 'mainnet',
+      contracts: [
+        'SP466FNC0P7JWTNM2R9T199QRZN1MYEDTAR0KP27.miamicoin-core-v1',
+      ],
     }),
-    clarinet({
-      path: './Clarinet.toml',
-    }),
-    hooks({
-      include: ['useAccount', 'useConnect', 'useDisconnect'],
-    })
   ],
 })
 ```
+
+## Future Enhancements
+
+1. Direct integration with Clarinet and Clarinet JS SDK for unit testing
+2. More hooks
 
 ## License
 
