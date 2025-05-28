@@ -1,6 +1,6 @@
 # @stacks/codegen
 
-Generate fully typed contract interfaces, functions, and hooks for Clarity smart contracts.
+Generate fully typed contract interfaces, functions, and React hooks for Clarity smart contracts.
 
 ## Usage
 
