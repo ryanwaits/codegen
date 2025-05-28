@@ -122,7 +122,7 @@ export default defineConfig({
     clarinet(),    // Generate contract interfaces from local Clarinet project
     actions(),     // Add read/write helper functions
     react(),       // Generate React hooks
-    hiro({         // Generate ABI contracts from Hiro API
+    hiro({         // Generate contract interfaces using the Hiro API
       apiKey: process.env.HIRO_API_KEY!,
       network: 'mainnet',
       contracts: [
