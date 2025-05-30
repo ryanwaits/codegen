@@ -1,6 +1,6 @@
 import { format } from "prettier";
 import type { ResolvedContract } from "../types/config.js";
-import type { ClarityFunction } from "clarity-abitype";
+import type { ClarityFunction } from "@secondlayer/clarity-types";
 
 /**
  * React hooks generator for contract interfaces and generic Stacks functionality
@@ -63,7 +63,7 @@ import { useState, useCallback } from 'react'
 import { useStacksConfig } from './provider'
 import { connect, disconnect, isConnected, request, openContractCall as stacksOpenContractCall } from '@stacks/connect'
 import { Cl, validateStacksAddress } from '@stacks/transactions'
-import type { ExtractFunctionArgs, ExtractFunctionNames, ClarityContract } from 'clarity-abitype'`;
+import type { ExtractFunctionArgs, ExtractFunctionNames, ClarityContract } from '@secondlayer/clarity-types'`;
 
   const header = `/**
  * Generated generic Stacks React hooks

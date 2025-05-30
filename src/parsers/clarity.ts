@@ -3,7 +3,7 @@ import type {
   ClarityContract,
   ClarityFunction,
   ClarityType,
-} from "clarity-abitype";
+} from "@secondlayer/clarity-types";
 
 /**
  * Basic Clarity contract parser

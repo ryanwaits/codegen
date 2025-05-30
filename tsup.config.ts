@@ -20,5 +20,5 @@ export default defineConfig({
   splitting: false,
   sourcemap: true,
   minify: false,
-  external: ["esbuild", "clarity-abitype"],
+  external: ["esbuild", "@secondlayer/clarity-types"],
 });

@@ -1,6 +1,6 @@
 import { format } from "prettier";
 import type { ResolvedContract } from "../types/config.js";
-import type { ClarityFunction } from "clarity-abitype";
+import type { ClarityFunction } from "@secondlayer/clarity-types";
 
 /**
  * Code generator for contract interfaces

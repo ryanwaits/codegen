@@ -4,7 +4,7 @@
 
 import { format } from "prettier";
 import type { ProcessedContract } from "../../../types/plugin.js";
-import type { ClarityFunction } from "clarity-abitype";
+import type { ClarityFunction } from "@secondlayer/clarity-types";
 import {
   toCamelCase,
   capitalize,

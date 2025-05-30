@@ -16,7 +16,7 @@ export type {
   ClarityType,
   ContractCallParams,
   ReadOnlyCallParams,
-} from "clarity-abitype";
+} from "@secondlayer/clarity-types";
 
 // Plugin system exports
 export type {

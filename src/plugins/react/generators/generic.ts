@@ -33,7 +33,7 @@ import { useState, useCallback } from 'react'
 import { useStacksConfig } from './provider'
 import { connect, disconnect, isConnected, request, openContractCall as stacksOpenContractCall } from '@stacks/connect'
 import { Cl, validateStacksAddress } from '@stacks/transactions'
-import type { ExtractFunctionArgs, ExtractFunctionNames, ClarityContract } from 'clarity-abitype'`;
+import type { ExtractFunctionArgs, ExtractFunctionNames, ClarityContract } from '@secondlayer/clarity-types'`;
 
   const header = `/**
  * Generated generic Stacks React hooks
