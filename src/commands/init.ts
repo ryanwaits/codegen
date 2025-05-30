@@ -27,8 +27,8 @@ export async function init() {
 
   if (hasClarinetProject) {
     // Generate plugin-based config for Clarinet projects
-    config = `import { defineConfig } from '@stacks/codegen';
-import { clarinet } from '@stacks/codegen/plugins';
+    config = `import { defineConfig } from '@secondlayer/cli';
+import { clarinet } from '@secondlayer/cli/plugins';
 
 export default defineConfig({
   out: './src/generated/contracts.ts',
@@ -38,7 +38,7 @@ export default defineConfig({
 });`;
   } else {
     // Generate basic config for non-Clarinet projects
-    config = `import { defineConfig } from '@stacks/codegen';
+    config = `import { defineConfig } from '@secondlayer/cli';
 
 export default defineConfig({
   out: './src/generated/contracts.ts',
@@ -52,7 +52,7 @@ export default defineConfig({
   spinner.succeed("Created `stacks.config.ts`");
 
   console.log(
-    "\nRun `codegen generate` to generate type-safe interfaces, functions, and hooks!"
+    "\nRun `secondlayer generate` to generate type-safe interfaces, functions, and hooks!"
   );
 }
 

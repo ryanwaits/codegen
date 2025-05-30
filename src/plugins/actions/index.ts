@@ -1,5 +1,5 @@
 /**
- * Actions Plugin for @stacks/codegen
+ * Actions Plugin for @secondlayer/cli
  * Generates read and write helper functions for direct blockchain interaction
  */
 
@@ -32,7 +32,7 @@ export interface ActionsPluginOptions {
  */
 export const actions: PluginFactory<ActionsPluginOptions> = (options = {}) => {
   return {
-    name: "@stacks/codegen/plugin-actions",
+    name: "@secondlayer/cli/plugin-actions",
     version: "1.0.0",
 
     async generate(context: GenerateContext): Promise<void> {

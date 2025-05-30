@@ -1,5 +1,5 @@
 /**
- * React Plugin Types for @stacks/codegen
+ * React Plugin Types for @secondlayer/cli
  */
 
 import type { PluginOptions } from "../../types/plugin.js";

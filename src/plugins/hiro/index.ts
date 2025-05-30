@@ -1,5 +1,5 @@
 /**
- * Hiro Plugin for @stacks/codegen
+ * Hiro Plugin for @secondlayer/cli
  * Fetches contract ABIs from deployed contracts on mainnet/testnet using the Hiro API
  */
 
@@ -30,7 +30,7 @@ export const hiro: PluginFactory<HiroPluginOptions> = (options) => {
   }
 
   return {
-    name: "@stacks/codegen/plugin-hiro",
+    name: "@secondlayer/cli/plugin-hiro",
     version: "1.0.0",
 
     async transformConfig(config: UserConfig): Promise<UserConfig> {

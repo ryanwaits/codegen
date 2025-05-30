@@ -1,5 +1,5 @@
 /**
- * React Plugin for @stacks/codegen
+ * React Plugin for @secondlayer/cli
  * Generates React hooks for contract interfaces and generic Stacks functionality
  */
 
@@ -16,7 +16,7 @@ export const react: PluginFactory<ReactPluginOptions> = (options = {}) => {
   const excludeList = options.exclude || [];
 
   return {
-    name: "@stacks/codegen/plugin-react",
+    name: "@secondlayer/cli/plugin-react",
     version: "1.0.0",
 
     async generate(context: GenerateContext): Promise<void> {

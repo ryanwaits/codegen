@@ -1,5 +1,5 @@
 /**
- * Plugin Manager for @stacks/codegen
+ * Plugin Manager for @secondlayer/cli
  * Handles plugin registration, lifecycle execution, and output management
  */
 

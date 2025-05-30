@@ -52,7 +52,7 @@ describe("Hiro Plugin", () => {
         contracts: ["SP123.test-contract"],
       });
 
-      expect(plugin.name).toBe("@stacks/codegen/plugin-hiro");
+      expect(plugin.name).toBe("@secondlayer/cli/plugin-hiro");
       expect(plugin.version).toBe("1.0.0");
       expect(plugin.transformConfig).toBeDefined();
     });

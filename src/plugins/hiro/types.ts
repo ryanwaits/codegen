@@ -1,5 +1,5 @@
 /**
- * Hiro Plugin Types for @stacks/codegen
+ * Hiro Plugin Types for @secondlayer/cli
  */
 
 import type { PluginOptions } from "../../types/plugin.js";

@@ -1,5 +1,5 @@
 /**
- * Plugin system types for @stacks/codegen
+ * Plugin system types for @secondlayer/cli
  */
 
 import type { StacksConfig, ResolvedContract, NetworkName } from "./config.js";

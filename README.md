@@ -1,4 +1,4 @@
-# @stacks/codegen
+# @secondlayer/cli
 
 Generate fully typed contract interfaces, functions, and React hooks for Clarity smart contracts.
 
@@ -68,31 +68,20 @@ function App() {
 > **Note:** This package is not yet published to npm. For now, you can install it locally:
 
 ```bash
-# Clone and build
-git clone https://github.com/ryanwaits/codegen.git
-cd codegen
-bun install
-bun run build
-
-# Link globally
-bun link
-
-# In your project
-cd /path/to/your/clarinet-project
-bun link @stacks/codegen
+bun add -g @secondlayer/cli
 ```
 ## Setup
 
-To create a `stacks.config.ts` file, run `codegen init` in your Clarinet project:
+To create a `stacks.config.ts` file, run `secondlayer init` in your Clarinet project:
 
 ```bash
-codegen init
+secondlayer init
 ```
 
 ```typescript
 // stacks.config.ts
-import { defineConfig } from '@stacks/codegen'
-import { clarinet } from '@stacks/codegen/plugins'
+import { defineConfig } from '@secondlayer/cli'
+import { clarinet } from '@secondlayer/cli/plugins'
 
 export default defineConfig({
   out: 'src/generated.ts',
@@ -100,10 +89,10 @@ export default defineConfig({
 })
 ```
 
-Run `⁠codegen generate` to create fully type-safe interfaces for your contracts.
+Run `secondlayer generate` to create fully type-safe interfaces for your contracts.
 
 ```bash
-codegen generate
+secondlayer generate
 ✔ Generation complete for 2 contracts
 📄 ./src/generated/contracts.ts
 ```
@@ -113,8 +102,8 @@ codegen generate
 ### Plugins
 
 ```typescript
-import { defineConfig } from '@stacks/codegen'
-import { clarinet, actions, react, hiro } from '@stacks/codegen/plugins'
+import { defineConfig } from '@secondlayer/cli'
+import { clarinet, actions, react, hiro } from '@secondlayer/cli/plugins'
 
 export default defineConfig({
   out: 'src/generated.ts',

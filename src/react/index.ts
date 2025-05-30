@@ -1,5 +1,5 @@
 /**
- * React integration for @stacks/codegen
+ * React integration for @secondlayer/cli
  */
 
 export { useStacksConfig } from "./hooks.js";

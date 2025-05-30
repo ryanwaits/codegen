@@ -1,5 +1,5 @@
 /**
- * Plugin exports for @stacks/codegen
+ * Plugin exports for @secondlayer/cli
  * This will be expanded as plugins are implemented
  */
 

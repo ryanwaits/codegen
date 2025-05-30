@@ -1,5 +1,5 @@
 /**
- * Clarinet Plugin for @stacks/codegen
+ * Clarinet Plugin for @secondlayer/cli
  * Generates type-safe contract interfaces from local Clarity contracts using Clarinet SDK
  */
 
@@ -114,7 +114,7 @@ export const clarinet: PluginFactory<ClarinetPluginOptions> = (
   let simnet: any;
 
   return {
-    name: "@stacks/codegen/plugin-clarinet",
+    name: "@secondlayer/cli/plugin-clarinet",
     version: "1.0.0",
 
     async transformConfig(config: UserConfig): Promise<UserConfig> {
